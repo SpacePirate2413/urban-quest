@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch iOS",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm run mobile:ios",
+      "presentation": {
+        "hidden": false,
+        "group": "mobile",
+        "order": 1
+      },
+      "problemMatcher": []
+    }
+  ]
+}
