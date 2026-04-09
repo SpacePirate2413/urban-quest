@@ -1,5 +1,5 @@
+import { SignJWT, createRemoteJWKSet, importPKCS8, jwtVerify } from 'jose';
 import { env } from '../../../config/env.js';
-import { SignJWT, importPKCS8, jwtVerify, createRemoteJWKSet } from 'jose';
 
 const APPLE_JWKS_URL = 'https://appleid.apple.com/auth/keys';
 
@@ -39,5 +39,5 @@ export async function verifyAppleIdToken(idToken: string): Promise<AppleIdTokenP
     audience: env.APPLE_CLIENT_ID,
   });
 
-  return payload as AppleIdTokenPayload;
+  return payload as unknown as AppleIdTokenPayload;
 }

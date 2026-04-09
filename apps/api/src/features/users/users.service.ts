@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma.js';
-import type { AuthProvider } from '@prisma/client';
+
+export type AuthProvider = 'GOOGLE' | 'APPLE' | 'DEV';
 
 export interface CreateUserInput {
   email: string;

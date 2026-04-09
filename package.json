@@ -18,7 +18,13 @@
     "api:start": "pnpm --filter @urban-quest/api start",
     "api:db:push": "pnpm --filter @urban-quest/api db:push",
     "api:db:studio": "pnpm --filter @urban-quest/api db:studio",
-    "lint": "pnpm -r lint"
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "test:api": "pnpm --filter @urban-quest/api test",
+    "test:creator": "pnpm --filter @urban-quest/creator-station test",
+    "test:mobile": "pnpm --filter @urban-quest/mobile test",
+    "typecheck": "pnpm --filter @urban-quest/api typecheck && pnpm --filter @urban-quest/mobile typecheck",
+    "check": "pnpm lint && pnpm typecheck && pnpm test"
   },
   "engines": {
     "node": ">=18"

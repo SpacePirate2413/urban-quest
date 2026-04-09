@@ -13,7 +13,7 @@ model User {
   name      String?
   avatarUrl String?
   
-  provider   AuthProvider
+  provider   String // GOOGLE | APPLE | DEV
   providerId String
   
   createdAt DateTime @default(now())
@@ -21,10 +21,4 @@ model User {
   
   @@unique([provider, providerId])
   @@index([email])
-}
-
-enum AuthProvider {
-  GOOGLE
-  APPLE
-  DEV
 }

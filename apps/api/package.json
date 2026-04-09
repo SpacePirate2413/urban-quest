@@ -11,7 +11,11 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:migrate": "prisma migrate dev",
-    "lint": "eslint src/"
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@fastify/cookie": "^10.0.1",
@@ -25,11 +29,15 @@
   },
   "devDependencies": {
     "@types/node": "^22.7.5",
+    "@eslint/js": "^9.12.0",
     "eslint": "^9.12.0",
     "pino-pretty": "^11.2.2",
     "prisma": "^5.20.0",
     "tsx": "^4.19.1",
     "typescript": "^5.6.3",
-    "typescript-eslint": "^8.8.1"
+    "typescript-eslint": "^8.8.1",
+    "vitest": "^2.1.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "dotenv": "^16.4.0"
   }
 }
