@@ -8,6 +8,10 @@
     "mobile:ios": "pnpm --filter @urban-quest/mobile ios",
     "mobile:android": "pnpm --filter @urban-quest/mobile android",
     "mobile:web": "pnpm --filter @urban-quest/mobile web",
+    "creator": "pnpm --filter @urban-quest/creator-station",
+    "creator:dev": "pnpm --filter @urban-quest/creator-station dev",
+    "creator:build": "pnpm --filter @urban-quest/creator-station build",
+    "creator:preview": "pnpm --filter @urban-quest/creator-station preview",
     "lint": "pnpm -r lint"
   },
   "engines": {
