@@ -20,7 +20,26 @@ const envSchema = z.object({
   CORS_ORIGINS: z.string().transform((val) => val.split(',')).default('http://localhost:5173,http://localhost:8081'),
   
   API_BASE_URL: z.string().default('http://localhost:3001'),
-});
+  
+  DEV_AUTH_BYPASS: z.enum(['true', 'false']).default('false').transform((val) => val === 'true'),
+  DEV_AUTH_EMAIL: z.string().email().optional(),
+}).refine(
+  (data) => {
+    if (data.DEV_AUTH_BYPASS && data.NODE_ENV !== 'development') {
+      return false;
+    }
+    return true;
+  },
+  { message: 'DEV_AUTH_BYPASS can only be enabled in development mode' }
+).refine(
+  (data) => {
+    if (data.DEV_AUTH_BYPASS && !data.DEV_AUTH_EMAIL) {
+      return false;
+    }
+    return true;
+  },
+  { message: 'DEV_AUTH_EMAIL is required when DEV_AUTH_BYPASS is enabled' }
+);
 
 const parsed = envSchema.safeParse(process.env);
 

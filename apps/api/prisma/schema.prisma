@@ -26,4 +26,5 @@ model User {
 enum AuthProvider {
   GOOGLE
   APPLE
+  DEV
 }

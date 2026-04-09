@@ -1,8 +1,10 @@
 import { FastifyInstance } from 'fastify';
-import { usersService } from './users.service.js';
-import { googleAuthHandler, googleCallbackHandler } from './auth/google.handler.js';
+import { env } from '../../config/env.js';
 import { appleAuthHandler, appleCallbackHandler } from './auth/apple.handler.js';
+import { devAuthHandler, devLogoutHandler } from './auth/dev.handler.js';
+import { googleAuthHandler, googleCallbackHandler } from './auth/google.handler.js';
 import { mobileTokenHandler } from './auth/mobile.handler.js';
+import { usersService } from './users.service.js';
 
 export async function usersRoutes(app: FastifyInstance) {
   // OAuth web flows (for creator-station)
@@ -14,6 +16,12 @@ export async function usersRoutes(app: FastifyInstance) {
   
   // Mobile OAuth token exchange (for React Native)
   app.post('/auth/mobile/token', mobileTokenHandler);
+  
+  // Dev auth bypass (only available when DEV_AUTH_BYPASS=true in development)
+  if (env.DEV_AUTH_BYPASS && env.NODE_ENV === 'development') {
+    app.get('/auth/dev', devAuthHandler);
+    app.post('/auth/logout', devLogoutHandler);
+  }
   
   // Protected routes
   app.get('/me', {
