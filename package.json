@@ -12,6 +12,12 @@
     "creator:dev": "pnpm --filter @urban-quest/creator-station dev",
     "creator:build": "pnpm --filter @urban-quest/creator-station build",
     "creator:preview": "pnpm --filter @urban-quest/creator-station preview",
+    "api": "pnpm --filter @urban-quest/api",
+    "api:dev": "pnpm --filter @urban-quest/api dev",
+    "api:build": "pnpm --filter @urban-quest/api build",
+    "api:start": "pnpm --filter @urban-quest/api start",
+    "api:db:push": "pnpm --filter @urban-quest/api db:push",
+    "api:db:studio": "pnpm --filter @urban-quest/api db:studio",
     "lint": "pnpm -r lint"
   },
   "engines": {
