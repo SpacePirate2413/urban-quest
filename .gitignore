@@ -44,3 +44,6 @@ android/
 
 # pnpm
 .pnpm-store/
+
+# test exhaust
+.windsurf/.last-test-run

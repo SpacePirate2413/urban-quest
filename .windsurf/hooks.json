@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "post_cascade_response": [
+      {
+        "command": ".windsurf/run-tests.sh",
+        "show_output": true
+      }
+    ]
+  }
+}
