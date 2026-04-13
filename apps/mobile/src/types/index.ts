@@ -5,17 +5,57 @@ export enum UserRole {
 
 export enum QuestStatus {
   DRAFT = 'DRAFT',
+  PENDING_REVIEW = 'PENDING_REVIEW',
+  APPROVED = 'APPROVED',
   PUBLISHED = 'PUBLISHED',
-  COMPLETED = 'COMPLETED',
+  REJECTED = 'REJECTED',
+}
+
+export enum Difficulty {
+  EASY = 'Easy',
+  MODERATE = 'Moderate',
+  DIFFICULT = 'Difficult',
+}
+
+export enum AgeRating {
+  FOUR_PLUS = '4+',
+  NINE_PLUS = '9+',
+  TWELVE_PLUS = '12+',
+  SEVENTEEN_PLUS = '17+',
 }
 
 export interface User {
   id: string;
+  email: string;
   username: string;
   avatarUrl?: string;
+  avatarType: 'custom' | 'preset' | 'google' | 'apple';
   role: UserRole;
+  birthdate: Date;
   totalXP: number;
   createdQuests: string[];
+  purchasedQuests: PurchasedQuest[];
+  completedQuestsCount: number;
+  reviewsWritten: Review[];
+  createdAt: Date;
+}
+
+export interface PurchasedQuest {
+  id: string;
+  questId: string;
+  purchasedAt: Date;
+  expiresAt: Date;
+  currentWaypointIndex: number;
+  completedAt?: Date;
+  progress: WaypointProgress[];
+}
+
+export interface WaypointProgress {
+  waypointId: string;
+  arrivedAt?: Date;
+  scenePlayedAt?: Date;
+  answeredAt?: Date;
+  selectedChoiceId?: string;
 }
 
 export interface LocationCoords {
@@ -33,6 +73,7 @@ export interface Waypoint {
   radius: number;
   note?: string;
   photoUrl?: string;
+  scenes: Scene[];
 }
 
 export interface Scene {
@@ -42,6 +83,22 @@ export interface Scene {
   speaker?: string;
   videoUrl?: string;
   audioUrl?: string;
+  questions: Question[];
+}
+
+export interface Question {
+  id: string;
+  sceneId: string;
+  text: string;
+  choices: Choice[];
+}
+
+export interface Choice {
+  id: string;
+  questionId: string;
+  text: string;
+  nextWaypointId?: string;
+  isCorrect?: boolean;
 }
 
 export interface Character {
@@ -52,18 +109,70 @@ export interface Character {
   roleInStory: string;
 }
 
+export interface Review {
+  id: string;
+  questId: string;
+  userId: string;
+  username: string;
+  avatarUrl?: string;
+  rating: 1 | 2 | 3 | 4 | 5;
+  text?: string;
+  createdAt: Date;
+}
+
 export interface Quest {
   id: string;
   title: string;
   tagline: string;
   description: string;
   authorId: string;
+  authorUsername: string;
+  authorAvatarUrl?: string;
   status: QuestStatus;
   coverImageUrl: string;
+  previewMediaUrl?: string;
   estimatedDurationMinutes: number;
-  difficultyLevel: 1 | 2 | 3 | 4 | 5;
+  estimatedDistanceMeters: number;
+  difficulty: Difficulty;
+  playerDifficultyRating?: number;
+  playerDifficultyCount?: number;
+  price: number;
+  isFree: boolean;
+  ageRating: AgeRating;
+  category: string;
+  playerCount: number;
+  minPlayers: number;
+  maxPlayers: number;
   waypoints: Waypoint[];
   characters: Character[];
+  reviews: Review[];
+  averageRating?: number;
+  reviewCount: number;
   createdAt: Date;
-  playerCount: number;
+  firstWaypointLocation: LocationCoords;
 }
+
+export interface ScoutedWaypoint {
+  id: string;
+  userId: string;
+  name: string;
+  notes?: string;
+  location: LocationCoords;
+  photos: string[];
+  videos: string[];
+  audioRecordings: string[];
+  createdAt: Date;
+}
+
+export interface FilterOptions {
+  priceRange?: 'free' | 'under5' | 'under10' | 'over10';
+  difficulty?: Difficulty;
+  maxDuration?: number;
+  category?: string;
+  minRating?: number;
+  maxDistance?: number;
+  ageRating?: AgeRating;
+  playerCount?: number;
+}
+
+export type ViewMode = 'map' | 'list';

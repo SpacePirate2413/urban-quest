@@ -1,15 +1,31 @@
 import { StyleSheet, TextStyle } from 'react-native';
 
 export const Colors = {
-  primaryBackground: '#0B1026',
-  accentYellow: '#FFD700',
-  accentRed: '#FF3333',
-  accentCyan: '#00FFFF',
-  surface: '#162044',
-  textPrimary: '#FFFFFF',
-  textSecondary: '#A0A8C0',
-  border: '#2A3A60',
-  success: '#00CC66',
+  // Core backgrounds - matching Creator Station
+  primaryBackground: '#0a1628',  // navy-deep
+  surface: '#111827',            // panel
+  border: '#1e293b',             // panel-border
+  inputBg: '#0f172a',            // input-bg
+  
+  // Text
+  textPrimary: '#ffffff',
+  textSecondary: '#94a3b8',      // slate-400
+  textMuted: '#64748b',          // slate-500
+  
+  // Accent colors - matching Creator Station
+  cyan: '#00d4ff',
+  neonGreen: '#39ff14',
+  hotPink: '#ff2d78',
+  yellow: '#ffd60a',
+  purple: '#a855f7',
+  orange: '#ff6b2b',
+  electricBlue: '#4a90d9',
+  
+  // Legacy aliases for compatibility
+  accentYellow: '#ffd60a',
+  accentCyan: '#00d4ff',
+  accentRed: '#ff2d78',
+  success: '#39ff14',
 };
 
 export const Typography = {

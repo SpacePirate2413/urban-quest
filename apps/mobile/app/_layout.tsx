@@ -8,10 +8,6 @@ import 'react-native-reanimated';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors, Typography } from '@/src/theme/theme';
 
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
-
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const [isSplashVisible, setSplashVisible] = React.useState(true);
@@ -33,17 +29,23 @@ export default function RootLayout() {
           alignItems: 'center',
         }}>
         <Text style={Typography.headerLarge}>URBAN QUEST</Text>
+        <Text style={[Typography.caption, { color: Colors.textSecondary, marginTop: 8 }]}>
+          Location-based adventures
+        </Text>
       </View>
     );
   }
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.primaryBackground } }}>
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="quest/[id]" options={{ presentation: 'card' }} />
+        <Stack.Screen name="quest/checkout" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="quest/play" options={{ presentation: 'fullScreenModal', gestureEnabled: false }} />
       </Stack>
-      <StatusBar style="auto" />
+      <StatusBar style="light" />
     </ThemeProvider>
   );
 }
