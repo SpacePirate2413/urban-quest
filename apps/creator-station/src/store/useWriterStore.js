@@ -183,20 +183,97 @@ const mockSubmissions = [
 ];
 
 export const useWriterStore = create((set, get) => ({
-  writer: {
-    id: 'writer-1',
-    name: 'Alex Writer',
-    email: 'alex@urbanquest.com',
-    stripeConnected: false,
-    totalEarnings: 209.55,
-  },
+  writer: null,
+  isAuthenticated: false,
+  isLoading: false,
+  error: null,
   
-  quests: mockQuests,
+  quests: [],
   activeQuestId: null,
   
   submissions: mockSubmissions,
 
-  addQuest: (quest) => set((state) => ({
+  // Auth actions
+  login: async (email, name) => {
+    set({ isLoading: true, error: null });
+    try {
+      const { user } = await api.devLogin(email, name);
+      set({ writer: user, isAuthenticated: true, isLoading: false });
+      // Load quests after login
+      get().loadQuests();
+      return user;
+    } catch (err) {
+      set({ error: err.message, isLoading: false });
+      throw err;
+    }
+  },
+
+  logout: () => {
+    api.logout();
+    set({ writer: null, isAuthenticated: false, quests: [], activeQuestId: null });
+  },
+
+  checkAuth: async () => {
+    try {
+      const user = await api.getMe();
+      set({ writer: user, isAuthenticated: true });
+      get().loadQuests();
+      return true;
+    } catch {
+      set({ writer: null, isAuthenticated: false });
+      return false;
+    }
+  },
+
+  // Quest actions with API sync
+  loadQuests: async () => {
+    set({ isLoading: true });
+    try {
+      const { quests } = await api.getMyQuests();
+      // Transform API response to match local format
+      const transformedQuests = quests.map(q => ({
+        ...q,
+        waypoints: q.waypoints || [],
+        scenes: (q.scenes || []).map(s => ({
+          ...s,
+          choices: s.choices ? JSON.parse(s.choices) : [],
+        })),
+        sales: q._count?.purchases || 0,
+        revenue: (q._count?.purchases || 0) * q.price,
+      }));
+      set({ quests: transformedQuests, isLoading: false });
+    } catch (err) {
+      set({ error: err.message, isLoading: false });
+    }
+  },
+
+  addQuest: async (quest) => {
+    try {
+      const newQuest = await api.createQuest({
+        title: quest?.title || 'Untitled Quest',
+        description: quest?.description || '',
+        genre: quest?.genre || 'Adventure',
+        price: quest?.price || 0,
+        ...quest,
+      });
+      set((state) => ({
+        quests: [...state.quests, {
+          ...newQuest,
+          waypoints: [],
+          scenes: [],
+          sales: 0,
+          revenue: 0,
+        }],
+      }));
+      return newQuest;
+    } catch (err) {
+      set({ error: err.message });
+      throw err;
+    }
+  },
+
+  // Legacy local addQuest for fallback
+  addQuestLocal: (quest) => set((state) => ({
     quests: [...state.quests, {
       id: `quest-${Date.now()}`,
       title: 'Untitled Quest',
@@ -216,11 +293,24 @@ export const useWriterStore = create((set, get) => ({
     }],
   })),
 
-  updateQuest: (questId, updates) => set((state) => ({
-    quests: state.quests.map((q) =>
-      q.id === questId ? { ...q, ...updates } : q
-    ),
-  })),
+  updateQuest: async (questId, updates) => {
+    try {
+      await api.updateQuest(questId, updates);
+      set((state) => ({
+        quests: state.quests.map((q) =>
+          q.id === questId ? { ...q, ...updates } : q
+        ),
+      }));
+    } catch (err) {
+      // Update locally even if API fails
+      set((state) => ({
+        quests: state.quests.map((q) =>
+          q.id === questId ? { ...q, ...updates } : q
+        ),
+        error: err.message,
+      }));
+    }
+  },
 
   deleteQuest: (questId) => set((state) => ({
     quests: state.quests.filter((q) => q.id !== questId),
@@ -234,25 +324,47 @@ export const useWriterStore = create((set, get) => ({
     return state.quests.find((q) => q.id === state.activeQuestId);
   },
 
-  addWaypoint: (questId, waypoint) => set((state) => ({
-    quests: state.quests.map((q) =>
-      q.id === questId
-        ? {
-            ...q,
-            waypoints: [...q.waypoints, {
-              id: `wp-${Date.now()}`,
-              name: 'New Waypoint',
-              description: '',
-              notes: '',
-              photo: null,
-              lat: 40.7128 + (Math.random() - 0.5) * 0.1,
-              lng: -74.0060 + (Math.random() - 0.5) * 0.1,
-              ...waypoint,
-            }],
-          }
-        : q
-    ),
-  })),
+  addWaypoint: async (questId, waypoint) => {
+    try {
+      const newWaypoint = await api.addWaypoint(questId, {
+        name: waypoint?.name || 'New Waypoint',
+        description: waypoint?.description || '',
+        notes: waypoint?.notes || '',
+        lat: waypoint?.lat || 40.7128 + (Math.random() - 0.5) * 0.1,
+        lng: waypoint?.lng || -74.0060 + (Math.random() - 0.5) * 0.1,
+        ...waypoint,
+      });
+      set((state) => ({
+        quests: state.quests.map((q) =>
+          q.id === questId
+            ? { ...q, waypoints: [...q.waypoints, newWaypoint] }
+            : q
+        ),
+      }));
+      return newWaypoint;
+    } catch (err) {
+      // Fallback to local
+      const localWaypoint = {
+        id: `wp-${Date.now()}`,
+        name: 'New Waypoint',
+        description: '',
+        notes: '',
+        photo: null,
+        lat: 40.7128 + (Math.random() - 0.5) * 0.1,
+        lng: -74.0060 + (Math.random() - 0.5) * 0.1,
+        ...waypoint,
+      };
+      set((state) => ({
+        quests: state.quests.map((q) =>
+          q.id === questId
+            ? { ...q, waypoints: [...q.waypoints, localWaypoint] }
+            : q
+        ),
+        error: err.message,
+      }));
+      return localWaypoint;
+    }
+  },
 
   updateWaypoint: (questId, waypointId, updates) => set((state) => ({
     quests: state.quests.map((q) =>
@@ -278,24 +390,46 @@ export const useWriterStore = create((set, get) => ({
     ),
   })),
 
-  addScene: (questId, scene) => set((state) => ({
-    quests: state.quests.map((q) =>
-      q.id === questId
-        ? {
-            ...q,
-            scenes: [...q.scenes, {
-              id: `scene-${Date.now()}`,
-              waypointId: q.waypoints[0]?.id || null,
-              script: '',
-              question: '',
-              choices: [],
-              audioTracks: [],
-              ...scene,
-            }],
-          }
-        : q
-    ),
-  })),
+  addScene: async (questId, scene) => {
+    const state = get();
+    const quest = state.quests.find(q => q.id === questId);
+    try {
+      const newScene = await api.addScene(questId, {
+        script: scene?.script || '',
+        question: scene?.question || '',
+        choices: scene?.choices ? JSON.stringify(scene.choices) : null,
+        waypointId: scene?.waypointId || quest?.waypoints[0]?.id || null,
+      });
+      set((state) => ({
+        quests: state.quests.map((q) =>
+          q.id === questId
+            ? { ...q, scenes: [...q.scenes, { ...newScene, choices: scene?.choices || [] }] }
+            : q
+        ),
+      }));
+      return newScene;
+    } catch (err) {
+      // Fallback to local
+      const localScene = {
+        id: `scene-${Date.now()}`,
+        waypointId: quest?.waypoints[0]?.id || null,
+        script: '',
+        question: '',
+        choices: [],
+        audioTracks: [],
+        ...scene,
+      };
+      set((state) => ({
+        quests: state.quests.map((q) =>
+          q.id === questId
+            ? { ...q, scenes: [...q.scenes, localScene] }
+            : q
+        ),
+        error: err.message,
+      }));
+      return localScene;
+    }
+  },
 
   updateScene: (questId, sceneId, updates) => set((state) => ({
     quests: state.quests.map((q) =>

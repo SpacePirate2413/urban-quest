@@ -7,15 +7,16 @@ const envSchema = z.object({
   
   DATABASE_URL: z.string().default('file:./dev.db'),
   
-  JWT_SECRET: z.string().min(32),
+  JWT_SECRET: z.string().min(32).default('dev-secret-key-minimum-32-characters-long'),
   
-  GOOGLE_CLIENT_ID: z.string(),
-  GOOGLE_CLIENT_SECRET: z.string(),
+  // OAuth credentials (optional in development with DEV_AUTH_BYPASS)
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
   
-  APPLE_CLIENT_ID: z.string(),
-  APPLE_TEAM_ID: z.string(),
-  APPLE_KEY_ID: z.string(),
-  APPLE_PRIVATE_KEY: z.string(),
+  APPLE_CLIENT_ID: z.string().optional(),
+  APPLE_TEAM_ID: z.string().optional(),
+  APPLE_KEY_ID: z.string().optional(),
+  APPLE_PRIVATE_KEY: z.string().optional(),
   
   CORS_ORIGINS: z.string().transform((val) => val.split(',')).default('http://localhost:5173,http://localhost:8081'),
   

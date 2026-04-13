@@ -3,6 +3,9 @@ import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import Fastify from 'fastify';
 import { env } from './config/env.js';
+import { purchaseRoutes } from './features/purchases/purchases.routes.js';
+import { questRoutes } from './features/quests/quests.routes.js';
+import { reviewRoutes } from './features/reviews/reviews.routes.js';
 import { usersRoutes } from './features/users/users.routes.js';
 
 export async function buildApp() {
@@ -36,6 +39,9 @@ export async function buildApp() {
   });
 
   await app.register(usersRoutes, { prefix: '/api/users' });
+  await app.register(questRoutes, { prefix: '/api/quests' });
+  await app.register(purchaseRoutes, { prefix: '/api/purchases' });
+  await app.register(reviewRoutes, { prefix: '/api/reviews' });
 
   app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
 

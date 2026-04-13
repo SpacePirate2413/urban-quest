@@ -1,19 +1,22 @@
 import { create } from 'zustand';
 import {
-  User,
-  Quest,
-  ScoutedWaypoint,
-  FilterOptions,
-  ViewMode,
-  LocationCoords,
-  PurchasedQuest,
+    FilterOptions,
+    LocationCoords,
+    PurchasedQuest,
+    Quest,
+    ScoutedWaypoint,
+    User,
+    ViewMode,
 } from '../types';
 
 interface AuthState {
   isAuthenticated: boolean;
   isOnboarding: boolean;
+  isLoading: boolean;
   onboardingStep: 'login' | 'birthdate' | 'username' | 'avatar' | 'location' | 'complete';
   user: User | null;
+  initAuth: () => Promise<void>;
+  devLogin: (email: string, name: string) => Promise<void>;
   login: (provider: 'apple' | 'google') => void;
   setBirthdate: (date: Date) => void;
   setUsername: (username: string) => void;
@@ -30,6 +33,8 @@ interface QuestState {
   filters: FilterOptions;
   searchLocation: LocationCoords | null;
   searchQuery: string;
+  isLoading: boolean;
+  loadQuests: (filters?: FilterOptions) => Promise<void>;
   setQuests: (quests: Quest[]) => void;
   selectQuest: (quest: Quest | null) => void;
   setActiveQuest: (quest: PurchasedQuest | null) => void;
@@ -37,7 +42,7 @@ interface QuestState {
   setFilters: (filters: FilterOptions) => void;
   setSearchLocation: (location: LocationCoords | null) => void;
   setSearchQuery: (query: string) => void;
-  purchaseQuest: (questId: string) => void;
+  purchaseQuest: (questId: string) => Promise<void>;
 }
 
 interface LocationState {
@@ -71,8 +76,58 @@ interface PlaybackState {
 export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: false,
   isOnboarding: false,
+  isLoading: true,
   onboardingStep: 'login',
   user: null,
+  initAuth: async () => {
+    try {
+      await api.init();
+      const user = await api.getMe();
+      set({
+        isAuthenticated: true,
+        isLoading: false,
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.name || user.email,
+          avatarUrl: user.avatarUrl,
+          avatarType: 'custom',
+          birthdate: user.birthdate ? new Date(user.birthdate) : undefined,
+          role: user.role,
+          createdAt: new Date(user.createdAt),
+          completedQuestsCount: 0,
+          totalXP: 0,
+          reviewsWritten: [],
+        },
+      });
+    } catch {
+      set({ isAuthenticated: false, isLoading: false });
+    }
+  },
+  devLogin: async (email: string, name: string) => {
+    try {
+      const { user } = await api.devLogin(email, name);
+      set({
+        isAuthenticated: true,
+        isOnboarding: false,
+        onboardingStep: 'complete',
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.name || user.email,
+          avatarUrl: user.avatarUrl,
+          avatarType: 'custom',
+          role: user.role,
+          createdAt: new Date(),
+          completedQuestsCount: 0,
+          totalXP: 0,
+          reviewsWritten: [],
+        },
+      });
+    } catch (err) {
+      console.error('Dev login failed:', err);
+    }
+  },
   login: (provider) =>
     set({
       isOnboarding: true,
@@ -99,13 +154,15 @@ export const useAuthStore = create<AuthState>((set) => ({
       isOnboarding: false,
       onboardingStep: 'complete',
     }),
-  logout: () =>
+  logout: async () => {
+    await api.logout();
     set({
       isAuthenticated: false,
       isOnboarding: false,
       onboardingStep: 'login',
       user: null,
-    }),
+    });
+  },
 }));
 
 export const useQuestStore = create<QuestState>((set) => ({
@@ -116,6 +173,57 @@ export const useQuestStore = create<QuestState>((set) => ({
   filters: {},
   searchLocation: null,
   searchQuery: '',
+  isLoading: false,
+  loadQuests: async (filters = {}) => {
+    set({ isLoading: true });
+    try {
+      const { quests } = await api.getPublishedQuests({
+        genre: filters.category,
+        difficulty: filters.difficulty,
+        minPrice: filters.priceRange === 'free' ? 0 : undefined,
+        maxPrice: filters.priceRange === 'free' ? 0 : filters.priceRange === 'under5' ? 5 : filters.priceRange === 'under10' ? 10 : undefined,
+      });
+      // Transform API response to match local Quest type
+      const transformedQuests: Quest[] = quests.map((q: any) => ({
+        id: q.id,
+        title: q.title,
+        tagline: q.tagline || q.description?.slice(0, 100),
+        description: q.description || '',
+        coverImageUrl: q.coverImage || 'https://picsum.photos/400/300',
+        price: q.price,
+        isFree: q.price === 0,
+        rating: q.averageRating || 0,
+        reviewCount: q._count?.reviews || 0,
+        difficulty: q.difficulty as any,
+        estimatedDuration: q.estimatedDuration || 60,
+        totalDistance: q.totalDistance || 2,
+        category: q.genre,
+        ageRating: q.ageRating,
+        creator: {
+          id: q.author?.id || '',
+          name: q.author?.name || 'Unknown',
+          avatarUrl: q.author?.avatarUrl,
+        },
+        startLocation: {
+          lat: q.startLat || q.waypoints?.[0]?.lat || 40.7128,
+          lng: q.startLng || q.waypoints?.[0]?.lng || -74.0060,
+        },
+        waypoints: (q.waypoints || []).map((wp: any) => ({
+          id: wp.id,
+          name: wp.name,
+          description: wp.description,
+          location: { lat: wp.lat, lng: wp.lng },
+          scenes: [],
+        })),
+        createdAt: new Date(q.createdAt),
+        updatedAt: new Date(q.updatedAt),
+      }));
+      set({ quests: transformedQuests, isLoading: false });
+    } catch (err) {
+      console.error('Failed to load quests:', err);
+      set({ isLoading: false });
+    }
+  },
   setQuests: (quests) => set({ quests }),
   selectQuest: (quest) => set({ selectedQuest: quest }),
   setActiveQuest: (quest) => set({ activeQuest: quest }),
@@ -123,22 +231,37 @@ export const useQuestStore = create<QuestState>((set) => ({
   setFilters: (filters) => set({ filters }),
   setSearchLocation: (location) => set({ searchLocation: location }),
   setSearchQuery: (query) => set({ searchQuery: query }),
-  purchaseQuest: (questId) =>
-    set((state) => {
+  purchaseQuest: async (questId) => {
+    try {
+      const purchase = await api.purchaseQuest(questId);
       const now = new Date();
       const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
       const newPurchase: PurchasedQuest = {
-        id: `purchase_${Date.now()}`,
+        id: purchase.id,
         questId,
-        purchasedAt: now,
+        purchasedAt: new Date(purchase.createdAt),
         expiresAt,
         currentWaypointIndex: 0,
         progress: [],
       };
-      return {
-        activeQuest: newPurchase,
-      };
-    }),
+      set({ activeQuest: newPurchase });
+    } catch (err) {
+      console.error('Failed to purchase quest:', err);
+      // Fallback to local purchase for free quests
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+      set({
+        activeQuest: {
+          id: `purchase_${Date.now()}`,
+          questId,
+          purchasedAt: now,
+          expiresAt,
+          currentWaypointIndex: 0,
+          progress: [],
+        },
+      });
+    }
+  },
 }));
 
 export const useLocationStore = create<LocationState>((set) => ({

@@ -12,6 +12,8 @@ model User {
   email     String   @unique
   name      String?
   avatarUrl String?
+  birthdate DateTime?
+  role      String   @default("player") // player | writer | admin
   
   provider   String // GOOGLE | APPLE | DEV
   providerId String
@@ -19,6 +21,161 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
+  // Relations
+  quests         Quest[]
+  purchases      Purchase[]
+  reviews        Review[]
+  scoutedWaypoints ScoutedWaypoint[]
+  
   @@unique([provider, providerId])
   @@index([email])
+}
+
+model Quest {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  tagline     String?
+  genre       String   @default("Adventure")
+  difficulty  String   @default("medium") // easy | medium | hard | expert
+  ageRating   String   @default("E") // E | T | M
+  price       Float    @default(0)
+  status      String   @default("draft") // draft | review | published | archived
+  coverImage  String?
+  usesAI      Boolean  @default(false)
+  narratorVoiceId String?
+  
+  // Stats
+  estimatedDuration Int? // minutes
+  totalDistance     Float? // km
+  playCount         Int    @default(0)
+  
+  // Location
+  startLat    Float?
+  startLng    Float?
+  city        String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  publishedAt DateTime?
+  
+  // Relations
+  authorId   String
+  author     User       @relation(fields: [authorId], references: [id])
+  waypoints  Waypoint[]
+  scenes     Scene[]
+  purchases  Purchase[]
+  reviews    Review[]
+  
+  @@index([status])
+  @@index([authorId])
+  @@index([city])
+}
+
+model Waypoint {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  notes       String?
+  photoUrl    String?
+  lat         Float
+  lng         Float
+  orderIndex  Int     @default(0)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  questId String
+  quest   Quest   @relation(fields: [questId], references: [id], onDelete: Cascade)
+  scenes  Scene[]
+  
+  @@index([questId])
+}
+
+model Scene {
+  id         String  @id @default(cuid())
+  script     String
+  question   String?
+  choices    String? // JSON array of choices
+  orderIndex Int     @default(0)
+  
+  // Media
+  mediaUrl    String?
+  mediaType   String? // audio | video
+  mediaStatus String? // pending | approved | rejected
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  questId    String
+  quest      Quest    @relation(fields: [questId], references: [id], onDelete: Cascade)
+  waypointId String?
+  waypoint   Waypoint? @relation(fields: [waypointId], references: [id])
+  
+  @@index([questId])
+  @@index([waypointId])
+}
+
+model Purchase {
+  id            String   @id @default(cuid())
+  amount        Float
+  currency      String   @default("USD")
+  paymentMethod String?  // apple_pay | google_pay | card
+  status        String   @default("completed") // pending | completed | refunded
+  
+  createdAt DateTime @default(now())
+  
+  // Progress tracking
+  currentSceneId String?
+  completedAt    DateTime?
+  
+  // Relations
+  userId  String
+  user    User   @relation(fields: [userId], references: [id])
+  questId String
+  quest   Quest  @relation(fields: [questId], references: [id])
+  
+  @@unique([userId, questId])
+  @@index([userId])
+  @@index([questId])
+}
+
+model Review {
+  id      String @id @default(cuid())
+  rating  Int    // 1-5
+  comment String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  userId  String
+  user    User   @relation(fields: [userId], references: [id])
+  questId String
+  quest   Quest  @relation(fields: [questId], references: [id])
+  
+  @@unique([userId, questId])
+  @@index([questId])
+}
+
+model ScoutedWaypoint {
+  id          String   @id @default(cuid())
+  name        String
+  notes       String?
+  lat         Float
+  lng         Float
+  photos      String?  // JSON array of URLs
+  videos      String?  // JSON array of URLs
+  audioRecordings String? // JSON array of URLs
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
 }
