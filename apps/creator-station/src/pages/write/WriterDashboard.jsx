@@ -1,18 +1,18 @@
-import { useNavigate } from 'react-router-dom';
-import { 
-  Plus, 
-  BookOpen, 
-  CheckCircle, 
-  ShoppingCart, 
-  DollarSign,
-  MapPin,
-  Film,
-  Sparkles,
-  Theater,
-  Mic
+import {
+    BookOpen,
+    CheckCircle,
+    DollarSign,
+    Film,
+    MapPin,
+    Mic,
+    Plus,
+    ShoppingCart,
+    Sparkles,
+    Theater
 } from 'lucide-react';
-import { Button, Badge, Card } from '../../components/ui';
-import { useWriterStore, NARRATOR_VOICES } from '../../store/useWriterStore';
+import { useNavigate } from 'react-router-dom';
+import { Badge, Button, Card } from '../../components/ui';
+import { NARRATOR_VOICES, useWriterStore } from '../../store/useWriterStore';
 
 const statusColors = {
   draft: 'gray',
@@ -37,25 +37,21 @@ export function WriterDashboard() {
     revenue: quests.reduce((sum, q) => sum + q.revenue, 0),
   };
 
-  const handleNewQuest = () => {
-    const newQuest = {
-      id: `quest-${Date.now()}`,
-      title: 'Untitled Quest',
-      description: '',
-      genre: 'Adventure',
-      price: 0,
-      status: 'draft',
-      coverImage: null,
-      usesAI: false,
-      narratorVoiceId: 'narrator-male-deep',
-      sales: 0,
-      revenue: 0,
-      waypoints: [],
-      scenes: [],
-    };
-    addQuest(newQuest);
-    setActiveQuest(newQuest.id);
-    navigate(`/write/quest/${newQuest.id}`);
+  const handleNewQuest = async () => {
+    try {
+      const newQuest = await addQuest({
+        title: 'Untitled Quest',
+        description: '',
+        genre: 'Adventure',
+        price: 0,
+      });
+      if (newQuest?.id) {
+        setActiveQuest(newQuest.id);
+        navigate(`/write/quest/${newQuest.id}`);
+      }
+    } catch (err) {
+      console.error('Failed to create quest:', err);
+    }
   };
 
   const handleQuestClick = (quest) => {

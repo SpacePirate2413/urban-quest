@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { api } from '../services/api';
 
 export const NARRATOR_VOICES = [
   { id: 'narrator-male-deep', name: 'Marcus', gender: 'male', age: '40s', style: 'Deep & Authoritative', color: '#00d4ff', description: 'Rich, commanding voice perfect for epic adventures and mysteries' },
@@ -182,41 +183,87 @@ const mockSubmissions = [
   },
 ];
 
+// Load persisted data from localStorage
+const loadPersistedState = () => {
+  try {
+    const saved = localStorage.getItem('urban-quest-store');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        submissions: parsed.submissions || mockSubmissions,
+        quests: parsed.quests || [],
+      };
+    }
+  } catch (e) {
+    console.warn('Failed to load persisted state:', e);
+  }
+  return { submissions: mockSubmissions, quests: [] };
+};
+
+const persistedState = loadPersistedState();
+
+// Save state to localStorage
+const saveState = (state) => {
+  try {
+    localStorage.setItem('urban-quest-store', JSON.stringify({
+      submissions: state.submissions,
+      quests: state.quests,
+    }));
+  } catch (e) {
+    console.warn('Failed to save state:', e);
+  }
+};
+
 export const useWriterStore = create((set, get) => ({
   writer: null,
   isAuthenticated: false,
   isLoading: false,
   error: null,
+  offlineMode: false,
   
-  quests: [],
+  quests: persistedState.quests,
   activeQuestId: null,
   
-  submissions: mockSubmissions,
+  submissions: persistedState.submissions,
 
   // Auth actions
   login: async (email, name) => {
     set({ isLoading: true, error: null });
     try {
       const { user } = await api.devLogin(email, name);
-      set({ writer: user, isAuthenticated: true, isLoading: false });
+      set({ writer: user, isAuthenticated: true, isLoading: false, offlineMode: false });
       // Load quests after login
       get().loadQuests();
       return user;
     } catch (err) {
-      set({ error: err.message, isLoading: false });
-      throw err;
+      // Fallback to offline mode if API is unavailable
+      console.warn('API unavailable, using offline mode:', err.message);
+      const offlineUser = {
+        id: `offline-${Date.now()}`,
+        email,
+        name: name || email.split('@')[0],
+        role: 'writer',
+      };
+      set({ 
+        writer: offlineUser, 
+        isAuthenticated: true, 
+        isLoading: false, 
+        offlineMode: true,
+        quests: mockQuests,
+      });
+      return offlineUser;
     }
   },
 
   logout: () => {
     api.logout();
-    set({ writer: null, isAuthenticated: false, quests: [], activeQuestId: null });
+    set({ writer: null, isAuthenticated: false, quests: [], activeQuestId: null, offlineMode: false });
   },
 
   checkAuth: async () => {
     try {
       const user = await api.getMe();
-      set({ writer: user, isAuthenticated: true });
+      set({ writer: user, isAuthenticated: true, offlineMode: false });
       get().loadQuests();
       return true;
     } catch {
@@ -248,6 +295,33 @@ export const useWriterStore = create((set, get) => ({
   },
 
   addQuest: async (quest) => {
+    const { offlineMode } = get();
+    
+    // Offline mode - create locally
+    if (offlineMode) {
+      const newQuest = {
+        id: `quest-${Date.now()}`,
+        title: quest?.title || 'Untitled Quest',
+        description: quest?.description || '',
+        genre: quest?.genre || 'Adventure',
+        price: quest?.price || 0,
+        status: 'draft',
+        coverImage: null,
+        usesAI: false,
+        narratorVoiceId: 'narrator-male-deep',
+        waypoints: [],
+        scenes: [],
+        sales: 0,
+        revenue: 0,
+        ...quest,
+      };
+      set((state) => ({
+        quests: [...state.quests, newQuest],
+      }));
+      return newQuest;
+    }
+    
+    // Online mode - use API
     try {
       const newQuest = await api.createQuest({
         title: quest?.title || 'Untitled Quest',
@@ -481,27 +555,32 @@ export const useWriterStore = create((set, get) => ({
       reviewNotes: null,
     };
 
-    set((state) => ({
-      submissions: [...state.submissions, submission],
-      quests: state.quests.map((q) =>
-        q.id === questId
-          ? {
-              ...q,
-              scenes: q.scenes.map((s) =>
-                s.id === sceneId
-                  ? {
-                      ...s,
-                      mediaFile: mediaFile.url || mediaFile.name,
-                      mediaType,
-                      mediaStatus: 'pending',
-                      submittedAt: new Date().toISOString(),
-                    }
-                  : s
-              ),
-            }
-          : q
-      ),
-    }));
+    set((state) => {
+      const newState = {
+        submissions: [...state.submissions, submission],
+        quests: state.quests.map((q) =>
+          q.id === questId
+            ? {
+                ...q,
+                scenes: q.scenes.map((s) =>
+                  s.id === sceneId
+                    ? {
+                        ...s,
+                        mediaFile: mediaFile.url || mediaFile.name,
+                        mediaType,
+                        mediaStatus: 'pending',
+                        submittedAt: new Date().toISOString(),
+                      }
+                    : s
+                ),
+              }
+            : q
+        ),
+      };
+      // Persist to localStorage
+      saveState({ ...state, ...newState });
+      return newState;
+    });
 
     return submission;
   },
