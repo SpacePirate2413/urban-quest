@@ -1,27 +1,27 @@
-import React, { useState, useRef } from 'react';
-import { 
-  Headphones, 
-  Settings, 
-  Wand2, 
-  RefreshCw, 
-  Play, 
-  Pause,
-  Download,
-  Mic,
-  Volume2,
-  Check,
-  Upload,
-  FileAudio,
-  FileVideo,
-  Send,
-  Clock,
-  CheckCircle,
-  XCircle,
-  Trash2
+import {
+    Check,
+    CheckCircle,
+    Clock,
+    FileAudio,
+    FileVideo,
+    Headphones,
+    Mic,
+    Pause,
+    Play,
+    RefreshCw,
+    Send,
+    Settings,
+    Trash2,
+    Upload,
+    Volume2,
+    Wand2,
+    XCircle
 } from 'lucide-react';
-import { Button, Card, Select, Badge } from '../../components/ui';
-import { useWriterStore, NARRATOR_VOICES } from '../../store/useWriterStore';
+import React, { useRef, useState } from 'react';
+import { Badge, Button, Card, Select } from '../../components/ui';
+import { api } from '../../services/api';
 import { ttsService } from '../../services/ttsService';
+import { NARRATOR_VOICES, useWriterStore } from '../../store/useWriterStore';
 
 export function AudioStudio({ questId }) {
   const { quests, updateQuest, updateScene, submitSceneMedia } = useWriterStore();
@@ -117,17 +117,43 @@ export function AudioStudio({ questId }) {
     
     setIsSubmitting(true);
     
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    submitSceneMedia(questId, selectedSceneId, {
-      name: uploadedFile.name,
-      size: uploadedFile.size,
-      url: uploadedFile.url,
-      duration: uploadedFile.duration || 'Unknown',
-    }, uploadedFile.type);
-    
-    setUploadedFile(prev => ({ ...prev, status: 'pending' }));
-    setIsSubmitting(false);
+    try {
+      let sceneId = selectedSceneId;
+
+      // If the scene has a local-only ID, sync it to the DB first
+      if (sceneId.startsWith('scene-')) {
+        const scene = quest?.scenes.find(s => s.id === sceneId);
+        const created = await api.addScene(questId, {
+          script: scene?.script || '(no script)',
+          question: scene?.question || undefined,
+          choices: scene?.choices ? JSON.stringify(scene.choices) : undefined,
+          waypointId: scene?.waypointId || undefined,
+        });
+        // Update local store with the real DB id
+        updateScene(questId, sceneId, { id: created.id });
+        sceneId = created.id;
+        setSelectedSceneId(sceneId);
+      }
+
+      // Upload real file to API
+      const result = await api.uploadSceneMedia(sceneId, uploadedFile.file);
+      
+      // Update local scene state with the returned media info
+      updateScene(questId, sceneId, {
+        mediaFile: result.fileName,
+        mediaUrl: result.mediaUrl,
+        mediaType: result.mediaType,
+        mediaStatus: 'pending',
+        submittedAt: new Date().toISOString(),
+      });
+      
+      setUploadedFile(prev => ({ ...prev, status: 'pending', mediaUrl: result.mediaUrl }));
+    } catch (err) {
+      console.error('Upload failed:', err);
+      alert(`Upload failed: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleVoiceSelect = (voiceId) => {

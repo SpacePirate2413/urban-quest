@@ -132,6 +132,47 @@ class ApiClient {
       method: 'DELETE',
     });
   }
+
+  // Media upload (multipart - bypasses JSON content-type)
+  async uploadSceneMedia(sceneId, file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const headers = {};
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
+
+    const response = await fetch(`${API_BASE}/quests/scenes/${sceneId}/upload`, {
+      method: 'POST',
+      headers,
+      body: formData,
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Upload failed' }));
+      throw new Error(error.error || 'Upload failed');
+    }
+
+    return response.json();
+  }
+
+  // Admin
+  async getSubmissions(filters = {}) {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== 'all') params.append(key, String(value));
+    });
+    return this.request(`/admin/submissions?${params}`);
+  }
+
+  async reviewSubmission(sceneId, status, notes) {
+    return this.request(`/admin/submissions/${sceneId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, notes }),
+    });
+  }
 }
 
 export const api = new ApiClient();

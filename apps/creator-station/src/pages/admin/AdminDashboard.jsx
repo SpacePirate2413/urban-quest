@@ -1,118 +1,97 @@
-import { useState, useRef } from 'react';
-import { 
-  Shield, 
-  FileAudio, 
-  FileVideo, 
-  Clock, 
-  CheckCircle, 
-  XCircle,
-  Play,
-  Pause,
-  User,
-  Mail,
-  Calendar,
-  Filter,
-  BarChart3,
-  Users,
-  FileCheck,
-  AlertCircle,
-  Volume2,
-  Loader2
+import {
+    AlertCircle,
+    BarChart3,
+    Calendar,
+    CheckCircle,
+    Clock,
+    FileAudio,
+    FileCheck,
+    FileVideo,
+    Loader2,
+    Mail,
+    Shield,
+    User,
+    Users,
+    XCircle,
 } from 'lucide-react';
-import { Button, Card, Badge, Input, Textarea } from '../../components/ui';
-import { useWriterStore } from '../../store/useWriterStore';
-import { ttsService } from '../../services/ttsService';
+import { useEffect, useRef, useState } from 'react';
+import { Badge, Button, Card, Textarea } from '../../components/ui';
+import { api } from '../../services/api';
 
-const SAMPLE_NARRATIONS = {
-  'sub-1': "Morning dew clings to the rose petals as sunlight filters through the lattice. The garden is quiet, save for the distant song of a mockingbird.",
-  'sub-2': "The warehouse smells of rust and old secrets. Shadows dance across the concrete floor as a single bulb flickers overhead.",
-  'sub-3': "You lean over the blueprints spread across the makeshift table. The crew watches you, waiting for your lead.",
-  'sub-4': "An elderly woman tends to the roses with practiced hands. She doesn't look up as you approach, but somehow she knows you're there.",
-};
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export function AdminDashboard() {
-  const { submissions, approveSubmission, rejectSubmission } = useWriterStore();
+  const [submissions, setSubmissions] = useState([]);
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [selectedSubmission, setSelectedSubmission] = useState(null);
   const [reviewNotes, setReviewNotes] = useState('');
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const audioRef = useRef(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isReviewing, setIsReviewing] = useState(false);
+  const mediaRef = useRef(null);
 
-  const stats = {
-    total: submissions.length,
-    pending: submissions.filter(s => s.status === 'pending').length,
-    approved: submissions.filter(s => s.status === 'approved').length,
-    rejected: submissions.filter(s => s.status === 'rejected').length,
-    uniqueWriters: new Set(submissions.map(s => s.writerId)).size,
-  };
-
-  const filteredSubmissions = submissions.filter(sub => {
-    if (statusFilter !== 'all' && sub.status !== statusFilter) return false;
-    if (typeFilter !== 'all' && sub.mediaType !== typeFilter) return false;
-    return true;
-  });
-
-  const handleApprove = () => {
-    if (!selectedSubmission) return;
-    approveSubmission(selectedSubmission.id, reviewNotes);
-    setSelectedSubmission(null);
-    setReviewNotes('');
-  };
-
-  const handleReject = () => {
-    if (!selectedSubmission) return;
-    rejectSubmission(selectedSubmission.id, reviewNotes);
-    setSelectedSubmission(null);
-    setReviewNotes('');
-  };
-
-  const handlePlayPreview = async () => {
-    if (isPlaying) {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
-      setIsPlaying(false);
-      return;
-    }
-
-    if (!selectedSubmission) return;
-
+  const fetchSubmissions = async () => {
     setIsLoading(true);
-    
     try {
-      const sampleText = SAMPLE_NARRATIONS[selectedSubmission.id] || 
-        "This is a sample narration preview for the submitted audio content. The actual uploaded file would play here in production.";
-      
-      const blob = await ttsService.generateSpeech(sampleText, 'narrator-male-deep', {
-        exaggeration: 0.5,
-        cfg_weight: 0.5,
-        temperature: 0.8,
+      const result = await api.getSubmissions({
+        status: statusFilter,
+        mediaType: typeFilter,
       });
-      
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      
-      audio.onended = () => {
-        setIsPlaying(false);
-        URL.revokeObjectURL(url);
-      };
-      
-      audio.onerror = () => {
-        setIsPlaying(false);
-        setIsLoading(false);
-      };
-      
-      await audio.play();
-      setIsPlaying(true);
-    } catch (error) {
-      console.error('Preview failed:', error);
+      setSubmissions(result.submissions || []);
+    } catch (err) {
+      console.error('Failed to load submissions:', err);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  useEffect(() => {
+    fetchSubmissions();
+  }, [statusFilter, typeFilter]);
+
+  const stats = {
+    total: submissions.length,
+    pending: submissions.filter(s => s.mediaStatus === 'pending').length,
+    approved: submissions.filter(s => s.mediaStatus === 'approved').length,
+    rejected: submissions.filter(s => s.mediaStatus === 'rejected').length,
+    uniqueWriters: new Set(submissions.map(s => s.writerId)).size,
+  };
+
+  const handleApprove = async () => {
+    if (!selectedSubmission || isReviewing) return;
+    setIsReviewing(true);
+    try {
+      await api.reviewSubmission(selectedSubmission.id, 'approved', reviewNotes);
+      setSelectedSubmission(null);
+      setReviewNotes('');
+      fetchSubmissions();
+    } catch (err) {
+      console.error('Approve failed:', err);
+    } finally {
+      setIsReviewing(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!selectedSubmission || isReviewing) return;
+    setIsReviewing(true);
+    try {
+      await api.reviewSubmission(selectedSubmission.id, 'rejected', reviewNotes);
+      setSelectedSubmission(null);
+      setReviewNotes('');
+      fetchSubmissions();
+    } catch (err) {
+      console.error('Reject failed:', err);
+    } finally {
+      setIsReviewing(false);
+    }
+  };
+
+  const getMediaSrc = (mediaUrl) => {
+    if (!mediaUrl) return null;
+    // mediaUrl is like /api/media/filename.mp3 — prepend just the origin
+    const origin = new URL(API_BASE).origin;
+    return `${origin}${mediaUrl}`;
   };
 
   const formatDate = (dateString) => {
@@ -208,8 +187,14 @@ export function AdminDashboard() {
               </div>
 
               <div className="divide-y divide-panel-border max-h-[600px] overflow-y-auto">
-                {filteredSubmissions.map((submission) => {
-                  const status = statusConfig[submission.status];
+                {isLoading ? (
+                  <div className="p-12 text-center">
+                    <Loader2 className="w-8 h-8 text-cyan animate-spin mx-auto mb-3" />
+                    <p className="font-bangers text-white/70">Loading submissions...</p>
+                  </div>
+                ) : submissions.map((submission) => {
+                  const status = statusConfig[submission.mediaStatus] || statusConfig.pending;
+                  const StatusIcon = status.icon;
                   const isSelected = selectedSubmission?.id === submission.id;
                   
                   return (
@@ -240,28 +225,25 @@ export function AdminDashboard() {
                               Scene {submission.sceneIndex}
                             </span>
                           </div>
-                          <p className="text-xs text-white/70 truncate">{submission.fileName}</p>
+                          <p className="text-xs text-white/70 truncate">{submission.mediaUrl}</p>
                           <div className="flex items-center gap-3 mt-2">
                             <span className="text-xs text-white/50 flex items-center gap-1">
                               <User className="w-3 h-3" />
                               {submission.writerName}
                             </span>
-                            <span className="text-xs text-white/50">
-                              {submission.fileSize}
-                            </span>
-                            <span className="text-xs text-white/50">
-                              {submission.duration}
+                            <span className="text-xs text-white/50 uppercase">
+                              {submission.mediaType}
                             </span>
                           </div>
                         </div>
 
                         <div className="flex flex-col items-end gap-2">
                           <Badge variant={status.color}>
-                            <status.icon className="w-3 h-3" />
+                            <StatusIcon className="w-3 h-3" />
                             {status.label}
                           </Badge>
                           <span className="text-[10px] text-white/50">
-                            {formatDate(submission.submittedAt)}
+                            {formatDate(submission.updatedAt)}
                           </span>
                         </div>
                       </div>
@@ -269,12 +251,12 @@ export function AdminDashboard() {
                   );
                 })}
 
-                {filteredSubmissions.length === 0 && (
+                {!isLoading && submissions.length === 0 && (
                   <div className="p-12 text-center">
                     <FileCheck className="w-12 h-12 text-white/20 mx-auto mb-3" />
                     <p className="font-bangers text-white/70">No submissions found</p>
                     <p className="text-sm text-white/50 mt-1">
-                      Adjust filters or wait for new submissions
+                      Upload media in the Audio Studio to see submissions here
                     </p>
                   </div>
                 )}
@@ -304,38 +286,44 @@ export function AdminDashboard() {
                           )}
                         </div>
                         <div>
-                          <p className="font-bangers text-sm text-white">{selectedSubmission.fileName}</p>
+                          <p className="font-bangers text-sm text-white uppercase">{selectedSubmission.mediaType}</p>
                           <p className="text-xs text-white/50">
-                            {selectedSubmission.fileSize} · {selectedSubmission.duration}
+                            Scene {selectedSubmission.sceneIndex}
                           </p>
                         </div>
                       </div>
 
-                      <Button
-                        variant="cyan-outline"
-                        size="sm"
-                        className="w-full"
-                        onClick={handlePlayPreview}
-                        disabled={isLoading}
-                      >
-                        {isLoading ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Loading...
-                          </>
-                        ) : isPlaying ? (
-                          <>
-                            <Pause className="w-4 h-4" />
-                            Pause Preview
-                          </>
-                        ) : (
-                          <>
-                            <Volume2 className="w-4 h-4" />
-                            Play Preview
-                          </>
-                        )}
-                      </Button>
+                      {selectedSubmission.mediaUrl && selectedSubmission.mediaType === 'audio' && (
+                        <audio
+                          ref={mediaRef}
+                          controls
+                          className="w-full mt-2"
+                          src={getMediaSrc(selectedSubmission.mediaUrl)}
+                        />
+                      )}
+
+                      {selectedSubmission.mediaUrl && selectedSubmission.mediaType === 'video' && (
+                        <video
+                          ref={mediaRef}
+                          controls
+                          className="w-full mt-2 rounded-lg max-h-48"
+                          src={getMediaSrc(selectedSubmission.mediaUrl)}
+                        />
+                      )}
+
+                      {!selectedSubmission.mediaUrl && (
+                        <p className="text-xs text-white/50 mt-2 italic">No media file available</p>
+                      )}
                     </div>
+
+                    {selectedSubmission.script && (
+                      <div className="space-y-2">
+                        <h4 className="font-bangers text-xs text-white/70 uppercase">Scene Script</h4>
+                        <div className="bg-input-bg rounded-lg p-3 max-h-32 overflow-y-auto">
+                          <p className="text-xs text-white/70 whitespace-pre-wrap">{selectedSubmission.script}</p>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="space-y-2">
                       <h4 className="font-bangers text-xs text-white/70 uppercase">Quest Info</h4>
@@ -358,12 +346,12 @@ export function AdminDashboard() {
                         </div>
                         <div className="flex items-center gap-2">
                           <Calendar className="w-4 h-4 text-yellow" />
-                          <span className="text-sm text-white/70">{formatDate(selectedSubmission.submittedAt)}</span>
+                          <span className="text-sm text-white/70">{formatDate(selectedSubmission.updatedAt)}</span>
                         </div>
                       </div>
                     </div>
 
-                    {selectedSubmission.status === 'pending' ? (
+                    {selectedSubmission.mediaStatus === 'pending' ? (
                       <>
                         <Textarea
                           label="Review Notes"
@@ -378,16 +366,18 @@ export function AdminDashboard() {
                             variant="green"
                             className="flex-1"
                             onClick={handleApprove}
+                            disabled={isReviewing}
                           >
-                            <CheckCircle className="w-4 h-4" />
+                            {isReviewing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                             Approve
                           </Button>
                           <Button
                             variant="pink"
                             className="flex-1"
                             onClick={handleReject}
+                            disabled={isReviewing}
                           >
-                            <XCircle className="w-4 h-4" />
+                            {isReviewing ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
                             Reject
                           </Button>
                         </div>
@@ -396,21 +386,13 @@ export function AdminDashboard() {
                       <div className="space-y-2">
                         <h4 className="font-bangers text-xs text-white/70 uppercase">Review Result</h4>
                         <div className={`rounded-lg p-3 ${
-                          selectedSubmission.status === 'approved' 
+                          selectedSubmission.mediaStatus === 'approved' 
                             ? 'bg-neon-green/10 border border-neon-green/30' 
                             : 'bg-hot-pink/10 border border-hot-pink/30'
                         }`}>
-                          <Badge variant={statusConfig[selectedSubmission.status].color} className="mb-2">
-                            {statusConfig[selectedSubmission.status].label}
+                          <Badge variant={statusConfig[selectedSubmission.mediaStatus]?.color || 'yellow'} className="mb-2">
+                            {statusConfig[selectedSubmission.mediaStatus]?.label || selectedSubmission.mediaStatus}
                           </Badge>
-                          {selectedSubmission.reviewNotes && (
-                            <p className="text-sm text-white/70 mt-2">{selectedSubmission.reviewNotes}</p>
-                          )}
-                          {selectedSubmission.reviewedAt && (
-                            <p className="text-xs text-white/50 mt-2">
-                              Reviewed: {formatDate(selectedSubmission.reviewedAt)}
-                            </p>
-                          )}
                         </div>
                       </div>
                     )}

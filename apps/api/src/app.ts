@@ -1,8 +1,13 @@
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
+import multipart from '@fastify/multipart';
+import staticPlugin from '@fastify/static';
 import Fastify from 'fastify';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { env } from './config/env.js';
+import { adminRoutes } from './features/admin/admin.routes.js';
 import { purchaseRoutes } from './features/purchases/purchases.routes.js';
 import { questRoutes } from './features/quests/quests.routes.js';
 import { reviewRoutes } from './features/reviews/reviews.routes.js';
@@ -25,6 +30,20 @@ export async function buildApp() {
 
   await app.register(cookie);
 
+  await app.register(multipart, {
+    limits: {
+      fileSize: 500 * 1024 * 1024, // 500MB
+    },
+  });
+
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const uploadsPath = path.join(__dirname, '..', 'uploads');
+  await app.register(staticPlugin, {
+    root: uploadsPath,
+    prefix: '/api/media/',
+    decorateReply: false,
+  });
+
   await app.register(jwt, {
     secret: env.JWT_SECRET,
     sign: { expiresIn: '7d' },
@@ -42,6 +61,7 @@ export async function buildApp() {
   await app.register(questRoutes, { prefix: '/api/quests' });
   await app.register(purchaseRoutes, { prefix: '/api/purchases' });
   await app.register(reviewRoutes, { prefix: '/api/reviews' });
+  await app.register(adminRoutes, { prefix: '/api/admin' });
 
   app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
 

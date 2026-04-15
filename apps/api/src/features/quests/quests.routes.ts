@@ -1,6 +1,17 @@
 import { FastifyInstance } from 'fastify';
+import fs from 'node:fs';
+import path from 'node:path';
+import { pipeline } from 'node:stream/promises';
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import * as questService from './quests.service.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const UPLOADS_DIR = path.join(__dirname, '..', '..', '..', 'uploads');
+
+const ALLOWED_AUDIO = ['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/x-m4a', 'audio/aac'];
+const ALLOWED_VIDEO = ['video/mp4', 'video/quicktime', 'video/webm'];
+const ALLOWED_TYPES = [...ALLOWED_AUDIO, ...ALLOWED_VIDEO];
 
 const createQuestSchema = z.object({
   title: z.string().min(1).max(100),
@@ -242,6 +253,62 @@ export async function questRoutes(app: FastifyInstance) {
       }
 
       return { success: true };
+    });
+
+    // Upload media for a scene
+    protectedRoutes.post('/scenes/:sceneId/upload', async (request, reply) => {
+      const userId = (request.user as any).id;
+      const { sceneId } = request.params as { sceneId: string };
+
+      const data = await request.file();
+      if (!data) {
+        return reply.status(400).send({ error: 'No file uploaded' });
+      }
+
+      if (!ALLOWED_TYPES.includes(data.mimetype)) {
+        return reply.status(400).send({ 
+          error: 'Invalid file type. Allowed: MP3, WAV, M4A, MP4, MOV, WebM' 
+        });
+      }
+
+      const mediaType = ALLOWED_AUDIO.includes(data.mimetype) ? 'audio' : 'video';
+      const ext = path.extname(data.filename) || (mediaType === 'audio' ? '.mp3' : '.mp4');
+      const storedName = `${sceneId}-${Date.now()}${ext}`;
+      const filePath = path.join(UPLOADS_DIR, storedName);
+
+      // Ensure uploads dir exists
+      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+      // Stream file to disk
+      await pipeline(data.file, fs.createWriteStream(filePath));
+
+      // Check if the file was truncated (exceeded size limit)
+      if (data.file.truncated) {
+        fs.unlinkSync(filePath);
+        return reply.status(413).send({ error: 'File too large. Maximum 500MB.' });
+      }
+
+      const mediaUrl = `/api/media/${storedName}`;
+
+      // Update scene in DB
+      const scene = await questService.updateScene(sceneId, userId, {
+        mediaUrl,
+        mediaType,
+        mediaStatus: 'pending',
+      });
+
+      if (!scene) {
+        fs.unlinkSync(filePath);
+        return reply.status(404).send({ error: 'Scene not found or not authorized' });
+      }
+
+      return {
+        mediaUrl,
+        mediaType,
+        mediaStatus: 'pending',
+        fileName: data.filename,
+        storedName,
+      };
     });
   });
 }
