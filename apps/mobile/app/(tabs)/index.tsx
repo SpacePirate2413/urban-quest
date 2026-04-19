@@ -198,15 +198,25 @@ function FilterModal({ visible, onClose, filters, onFilterChange }: { visible: b
 }
 
 export default function PlayScreen() {
-  const { viewMode, setViewMode, filters, setFilters, setQuests, selectQuest } = useQuestStore();
+  const { viewMode, setViewMode, filters, setFilters, quests, loadQuests, selectQuest } = useQuestStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
-  useEffect(() => { setQuests(MOCK_QUESTS); }, []);
+  useEffect(() => {
+    loadQuests().then(() => {
+      // If API returned no quests, fall back to mocks
+      const current = useQuestStore.getState().quests;
+      if (!current || current.length === 0) {
+        useQuestStore.getState().setQuests(MOCK_QUESTS);
+      }
+    });
+  }, []);
 
   const activeFiltersCount = [filters.priceRange, filters.difficulty, filters.category, filters.minRating].filter(Boolean).length;
 
-  const filteredQuests = MOCK_QUESTS.filter((quest) => {
+  const allQuests = quests.length > 0 ? quests : MOCK_QUESTS;
+
+  const filteredQuests = allQuests.filter((quest) => {
     if (searchQuery && !quest.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     if (filters.priceRange === 'free' && !quest.isFree) return false;
     if (filters.priceRange === 'under5' && quest.price >= 5) return false;

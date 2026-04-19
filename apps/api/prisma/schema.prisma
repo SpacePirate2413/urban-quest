@@ -44,6 +44,7 @@ model Quest {
   coverImage  String?
   usesAI      Boolean  @default(false)
   narratorVoiceId String?
+  submissionStatus String? // draft | pending | approved | rejected
   
   // Stats
   estimatedDuration Int? // minutes
@@ -135,7 +136,7 @@ model Purchase {
   userId  String
   user    User   @relation(fields: [userId], references: [id])
   questId String
-  quest   Quest  @relation(fields: [questId], references: [id])
+  quest   Quest  @relation(fields: [questId], references: [id], onDelete: Cascade)
   
   @@unique([userId, questId])
   @@index([userId])
@@ -154,7 +155,7 @@ model Review {
   userId  String
   user    User   @relation(fields: [userId], references: [id])
   questId String
-  quest   Quest  @relation(fields: [questId], references: [id])
+  quest   Quest  @relation(fields: [questId], references: [id], onDelete: Cascade)
   
   @@unique([userId, questId])
   @@index([questId])

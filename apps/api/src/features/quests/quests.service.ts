@@ -1,5 +1,5 @@
-import { prisma } from '../../lib/prisma.js';
 import { Prisma } from '@prisma/client';
+import { prisma } from '../../lib/prisma.js';
 
 export interface CreateQuestInput {
   title: string;
@@ -250,6 +250,41 @@ export async function updateScene(sceneId: string, authorId: string, data: Parti
   if (!scene) return null;
 
   return prisma.scene.update({ where: { id: sceneId }, data });
+}
+
+export async function submitQuestForReview(questId: string, authorId: string) {
+  const quest = await prisma.quest.findFirst({
+    where: { id: questId, authorId },
+    include: { scenes: { orderBy: { orderIndex: 'asc' } } },
+  });
+
+  if (!quest) return { error: 'Quest not found or not authorized' };
+  if (quest.scenes.length === 0) return { error: 'Quest must have at least one scene' };
+
+  const scenesWithoutMedia = quest.scenes.filter(s => !s.mediaUrl);
+  if (scenesWithoutMedia.length > 0) {
+    return {
+      error: `All scenes must have media uploaded. Missing: Scene${scenesWithoutMedia.length > 1 ? 's' : ''} ${scenesWithoutMedia.map(s => s.orderIndex + 1).join(', ')}`,
+    };
+  }
+
+  // Atomically set quest submissionStatus and all scene mediaStatus to pending
+  const [updatedQuest] = await prisma.$transaction([
+    prisma.quest.update({
+      where: { id: questId },
+      data: { submissionStatus: 'pending' },
+      include: {
+        author: { select: { id: true, name: true, avatarUrl: true } },
+        scenes: { orderBy: { orderIndex: 'asc' } },
+      },
+    }),
+    prisma.scene.updateMany({
+      where: { questId },
+      data: { mediaStatus: 'pending' },
+    }),
+  ]);
+
+  return updatedQuest;
 }
 
 export async function deleteScene(sceneId: string, authorId: string) {

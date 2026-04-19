@@ -1,12 +1,12 @@
+import { ArrowLeft, Film, Headphones, MapPin, Settings } from 'lucide-react';
 import { useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Film, Headphones, Settings } from 'lucide-react';
-import { Button, Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui';
 import { useWriterStore } from '../../store/useWriterStore';
-import { WaypointEditor } from './WaypointEditor';
-import { ScreenplayEditor } from './ScreenplayEditor';
 import { AudioStudio } from './AudioStudio';
 import { QuestSettings } from './QuestSettings';
+import { ScreenplayEditor } from './ScreenplayEditor';
+import { WaypointEditor } from './WaypointEditor';
 
 export function QuestEditor() {
   const { id } = useParams();
@@ -59,7 +59,7 @@ export function QuestEditor() {
               Media
             </TabsTrigger>
             <TabsTrigger value="settings" icon={<Settings className="w-4 h-4" />}>
-              Settings
+              Quest Details
             </TabsTrigger>
           </TabsList>
         </div>

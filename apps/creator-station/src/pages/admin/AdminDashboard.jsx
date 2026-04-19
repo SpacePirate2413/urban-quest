@@ -3,16 +3,22 @@ import {
     BarChart3,
     Calendar,
     CheckCircle,
+    ChevronDown,
+    ChevronRight,
     Clock,
+    DollarSign,
     FileAudio,
     FileCheck,
     FileVideo,
     Loader2,
     Mail,
+    MapPin,
     Shield,
+    Sparkles,
+    Tag,
     User,
     Users,
-    XCircle,
+    XCircle
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Badge, Button, Card, Textarea } from '../../components/ui';
@@ -21,10 +27,12 @@ import { api } from '../../services/api';
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export function AdminDashboard() {
-  const [submissions, setSubmissions] = useState([]);
+  const [questSubmissions, setQuestSubmissions] = useState([]);
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
-  const [selectedSubmission, setSelectedSubmission] = useState(null);
+  const [selectedQuest, setSelectedQuest] = useState(null);
+  const [expandedQuestId, setExpandedQuestId] = useState(null);
+  const [selectedScene, setSelectedScene] = useState(null);
   const [reviewNotes, setReviewNotes] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isReviewing, setIsReviewing] = useState(false);
@@ -37,7 +45,7 @@ export function AdminDashboard() {
         status: statusFilter,
         mediaType: typeFilter,
       });
-      setSubmissions(result.submissions || []);
+      setQuestSubmissions(result.questSubmissions || []);
     } catch (err) {
       console.error('Failed to load submissions:', err);
     } finally {
@@ -50,38 +58,70 @@ export function AdminDashboard() {
   }, [statusFilter, typeFilter]);
 
   const stats = {
-    total: submissions.length,
-    pending: submissions.filter(s => s.mediaStatus === 'pending').length,
-    approved: submissions.filter(s => s.mediaStatus === 'approved').length,
-    rejected: submissions.filter(s => s.mediaStatus === 'rejected').length,
-    uniqueWriters: new Set(submissions.map(s => s.writerId)).size,
+    total: questSubmissions.length,
+    pending: questSubmissions.filter(q => q.submissionStatus === 'pending').length,
+    approved: questSubmissions.filter(q => q.submissionStatus === 'approved').length,
+    rejected: questSubmissions.filter(q => q.submissionStatus === 'rejected').length,
+    uniqueWriters: new Set(questSubmissions.map(q => q.writerId)).size,
   };
 
-  const handleApprove = async () => {
-    if (!selectedSubmission || isReviewing) return;
+  const handleApproveQuest = async () => {
+    if (!selectedQuest || isReviewing) return;
     setIsReviewing(true);
     try {
-      await api.reviewSubmission(selectedSubmission.id, 'approved', reviewNotes);
-      setSelectedSubmission(null);
+      await api.reviewQuestSubmission(selectedQuest.questId, 'approved', reviewNotes);
+      setSelectedQuest(null);
+      setSelectedScene(null);
       setReviewNotes('');
       fetchSubmissions();
     } catch (err) {
-      console.error('Approve failed:', err);
+      console.error('Approve quest failed:', err);
     } finally {
       setIsReviewing(false);
     }
   };
 
-  const handleReject = async () => {
-    if (!selectedSubmission || isReviewing) return;
+  const handleRejectQuest = async () => {
+    if (!selectedQuest || isReviewing) return;
     setIsReviewing(true);
     try {
-      await api.reviewSubmission(selectedSubmission.id, 'rejected', reviewNotes);
-      setSelectedSubmission(null);
+      await api.reviewQuestSubmission(selectedQuest.questId, 'rejected', reviewNotes);
+      setSelectedQuest(null);
+      setSelectedScene(null);
       setReviewNotes('');
       fetchSubmissions();
     } catch (err) {
-      console.error('Reject failed:', err);
+      console.error('Reject quest failed:', err);
+    } finally {
+      setIsReviewing(false);
+    }
+  };
+
+  const handleRejectScene = async (sceneId) => {
+    if (isReviewing) return;
+    setIsReviewing(true);
+    try {
+      await api.reviewSceneSubmission(sceneId, 'rejected', reviewNotes);
+      setSelectedScene(null);
+      setReviewNotes('');
+      fetchSubmissions();
+    } catch (err) {
+      console.error('Reject scene failed:', err);
+    } finally {
+      setIsReviewing(false);
+    }
+  };
+
+  const handleApproveScene = async (sceneId) => {
+    if (isReviewing) return;
+    setIsReviewing(true);
+    try {
+      await api.reviewSceneSubmission(sceneId, 'approved', reviewNotes);
+      setSelectedScene(null);
+      setReviewNotes('');
+      fetchSubmissions();
+    } catch (err) {
+      console.error('Approve scene failed:', err);
     } finally {
       setIsReviewing(false);
     }
@@ -89,7 +129,6 @@ export function AdminDashboard() {
 
   const getMediaSrc = (mediaUrl) => {
     if (!mediaUrl) return null;
-    // mediaUrl is like /api/media/filename.mp3 — prepend just the origin
     const origin = new URL(API_BASE).origin;
     return `${origin}${mediaUrl}`;
   };
@@ -111,6 +150,13 @@ export function AdminDashboard() {
     rejected: { color: 'pink', icon: XCircle, label: 'Rejected' },
   };
 
+  const handleSelectQuest = (quest) => {
+    setSelectedQuest(quest);
+    setSelectedScene(null);
+    setReviewNotes('');
+    setExpandedQuestId(quest.questId);
+  };
+
   return (
     <div className="min-h-screen bg-navy-deep">
       <header className="h-16 bg-panel border-b border-panel-border flex items-center justify-between px-6">
@@ -129,7 +175,7 @@ export function AdminDashboard() {
           <StatCard 
             icon={<BarChart3 className="w-5 h-5" />}
             value={stats.total}
-            label="Total Submissions"
+            label="Total Quests"
             color="cyan"
           />
           <StatCard 
@@ -162,7 +208,7 @@ export function AdminDashboard() {
           <div className="flex-1">
             <Card className="overflow-hidden">
               <div className="p-4 border-b border-panel-border flex items-center justify-between">
-                <h2 className="font-bangers text-lg text-white">Submissions</h2>
+                <h2 className="font-bangers text-lg text-white">Quest Submissions</h2>
                 <div className="flex gap-2">
                   <select
                     value={statusFilter}
@@ -192,71 +238,118 @@ export function AdminDashboard() {
                     <Loader2 className="w-8 h-8 text-cyan animate-spin mx-auto mb-3" />
                     <p className="font-bangers text-white/70">Loading submissions...</p>
                   </div>
-                ) : submissions.map((submission) => {
-                  const status = statusConfig[submission.mediaStatus] || statusConfig.pending;
+                ) : questSubmissions.map((quest) => {
+                  const status = statusConfig[quest.submissionStatus] || statusConfig.pending;
                   const StatusIcon = status.icon;
-                  const isSelected = selectedSubmission?.id === submission.id;
-                  
+                  const isSelected = selectedQuest?.questId === quest.questId;
+                  const isExpanded = expandedQuestId === quest.questId;
+
                   return (
-                    <div
-                      key={submission.id}
-                      onClick={() => setSelectedSubmission(submission)}
-                      className={`p-4 cursor-pointer transition-all hover:bg-panel-border/30 ${
-                        isSelected ? 'bg-cyan/10 border-l-4 border-cyan' : ''
-                      }`}
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                          submission.mediaType === 'video' ? 'bg-purple/20' : 'bg-cyan/20'
-                        }`}>
-                          {submission.mediaType === 'video' ? (
-                            <FileVideo className="w-5 h-5 text-purple" />
-                          ) : (
-                            <FileAudio className="w-5 h-5 text-cyan" />
-                          )}
-                        </div>
+                    <div key={quest.questId}>
+                      <div
+                        onClick={() => handleSelectQuest(quest)}
+                        className={`p-4 cursor-pointer transition-all hover:bg-panel-border/30 ${
+                          isSelected ? 'bg-cyan/10 border-l-4 border-cyan' : ''
+                        }`}
+                      >
+                        <div className="flex items-start gap-4">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedQuestId(isExpanded ? null : quest.questId);
+                            }}
+                            className="mt-1 text-white/50 hover:text-white"
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="w-4 h-4" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4" />
+                            )}
+                          </button>
 
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <p className="font-bangers text-sm text-white truncate">
-                              {submission.questTitle}
-                            </p>
-                            <span className="text-xs text-white/50">
-                              Scene {submission.sceneIndex}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="font-bangers text-sm text-white truncate">
+                                {quest.questTitle}
+                              </p>
+                              <span className="text-xs text-white/50">
+                                {quest.sceneCount} scene{quest.sceneCount !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 mt-1">
+                              <span className="text-xs text-white/50 flex items-center gap-1">
+                                <User className="w-3 h-3" />
+                                {quest.writerName}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col items-end gap-2">
+                            <Badge variant={status.color}>
+                              <StatusIcon className="w-3 h-3" />
+                              {status.label}
+                            </Badge>
+                            <span className="text-[10px] text-white/50">
+                              {formatDate(quest.updatedAt)}
                             </span>
                           </div>
-                          <p className="text-xs text-white/70 truncate">{submission.mediaUrl}</p>
-                          <div className="flex items-center gap-3 mt-2">
-                            <span className="text-xs text-white/50 flex items-center gap-1">
-                              <User className="w-3 h-3" />
-                              {submission.writerName}
-                            </span>
-                            <span className="text-xs text-white/50 uppercase">
-                              {submission.mediaType}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col items-end gap-2">
-                          <Badge variant={status.color}>
-                            <StatusIcon className="w-3 h-3" />
-                            {status.label}
-                          </Badge>
-                          <span className="text-[10px] text-white/50">
-                            {formatDate(submission.updatedAt)}
-                          </span>
                         </div>
                       </div>
+
+                      {isExpanded && (
+                        <div className="bg-panel/50 border-t border-panel-border">
+                          {quest.scenes.map((scene) => {
+                            const sceneStatus = statusConfig[scene.mediaStatus] || statusConfig.pending;
+                            const SceneStatusIcon = sceneStatus.icon;
+                            const isSceneSelected = selectedScene?.id === scene.id;
+
+                            return (
+                              <div
+                                key={scene.id}
+                                onClick={() => setSelectedScene(scene)}
+                                className={`pl-12 pr-4 py-3 cursor-pointer transition-all hover:bg-panel-border/20 border-b border-panel-border/50 last:border-b-0 ${
+                                  isSceneSelected ? 'bg-purple/10' : ''
+                                }`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-8 h-8 rounded flex items-center justify-center ${
+                                    scene.mediaType === 'video' ? 'bg-purple/20' : 'bg-cyan/20'
+                                  }`}>
+                                    {scene.mediaType === 'video' ? (
+                                      <FileVideo className="w-4 h-4 text-purple" />
+                                    ) : (
+                                      <FileAudio className="w-4 h-4 text-cyan" />
+                                    )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs text-white font-bangers">
+                                      Scene {scene.sceneIndex + 1}
+                                      {scene.waypointName && (
+                                        <span className="text-white/50 ml-2">@ {scene.waypointName}</span>
+                                      )}
+                                    </p>
+                                    <p className="text-[10px] text-white/50 uppercase">{scene.mediaType}</p>
+                                  </div>
+                                  <Badge variant={sceneStatus.color} className="text-[9px]">
+                                    <SceneStatusIcon className="w-2.5 h-2.5" />
+                                    {sceneStatus.label}
+                                  </Badge>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
 
-                {!isLoading && submissions.length === 0 && (
+                {!isLoading && questSubmissions.length === 0 && (
                   <div className="p-12 text-center">
                     <FileCheck className="w-12 h-12 text-white/20 mx-auto mb-3" />
                     <p className="font-bangers text-white/70">No submissions found</p>
                     <p className="text-sm text-white/50 mt-1">
-                      Upload media in the Audio Studio to see submissions here
+                      Creators submit quests for review from the Audio Studio
                     </p>
                   </div>
                 )}
@@ -266,71 +359,175 @@ export function AdminDashboard() {
 
           <div className="w-96">
             <Card className="sticky top-6">
-              {selectedSubmission ? (
+              {selectedScene ? (
                 <div className="p-4">
                   <div className="flex items-center gap-2 mb-4">
-                    <AlertCircle className="w-5 h-5 text-yellow" />
-                    <h3 className="font-bangers text-lg text-white">Review Submission</h3>
+                    <AlertCircle className="w-5 h-5 text-purple" />
+                    <h3 className="font-bangers text-lg text-white">Scene Review</h3>
                   </div>
 
                   <div className="space-y-4">
                     <div className="bg-input-bg rounded-lg p-4">
                       <div className="flex items-center gap-3 mb-3">
                         <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
-                          selectedSubmission.mediaType === 'video' ? 'bg-purple/20' : 'bg-cyan/20'
+                          selectedScene.mediaType === 'video' ? 'bg-purple/20' : 'bg-cyan/20'
                         }`}>
-                          {selectedSubmission.mediaType === 'video' ? (
+                          {selectedScene.mediaType === 'video' ? (
                             <FileVideo className="w-6 h-6 text-purple" />
                           ) : (
                             <FileAudio className="w-6 h-6 text-cyan" />
                           )}
                         </div>
                         <div>
-                          <p className="font-bangers text-sm text-white uppercase">{selectedSubmission.mediaType}</p>
-                          <p className="text-xs text-white/50">
-                            Scene {selectedSubmission.sceneIndex}
-                          </p>
+                          <p className="font-bangers text-sm text-white uppercase">{selectedScene.mediaType}</p>
+                          <p className="text-xs text-white/50">Scene {selectedScene.sceneIndex + 1}</p>
                         </div>
                       </div>
 
-                      {selectedSubmission.mediaUrl && selectedSubmission.mediaType === 'audio' && (
-                        <audio
-                          ref={mediaRef}
-                          controls
-                          className="w-full mt-2"
-                          src={getMediaSrc(selectedSubmission.mediaUrl)}
-                        />
+                      {selectedScene.mediaUrl && selectedScene.mediaType === 'audio' && (
+                        <audio ref={mediaRef} controls className="w-full mt-2" src={getMediaSrc(selectedScene.mediaUrl)} />
                       )}
-
-                      {selectedSubmission.mediaUrl && selectedSubmission.mediaType === 'video' && (
-                        <video
-                          ref={mediaRef}
-                          controls
-                          className="w-full mt-2 rounded-lg max-h-48"
-                          src={getMediaSrc(selectedSubmission.mediaUrl)}
-                        />
+                      {selectedScene.mediaUrl && selectedScene.mediaType === 'video' && (
+                        <video ref={mediaRef} controls className="w-full mt-2 rounded-lg max-h-48" src={getMediaSrc(selectedScene.mediaUrl)} />
                       )}
-
-                      {!selectedSubmission.mediaUrl && (
+                      {!selectedScene.mediaUrl && (
                         <p className="text-xs text-white/50 mt-2 italic">No media file available</p>
                       )}
                     </div>
 
-                    {selectedSubmission.script && (
+                    {selectedScene.script && (
                       <div className="space-y-2">
                         <h4 className="font-bangers text-xs text-white/70 uppercase">Scene Script</h4>
                         <div className="bg-input-bg rounded-lg p-3 max-h-32 overflow-y-auto">
-                          <p className="text-xs text-white/70 whitespace-pre-wrap">{selectedSubmission.script}</p>
+                          <p className="text-xs text-white/70 whitespace-pre-wrap">{selectedScene.script}</p>
                         </div>
                       </div>
                     )}
 
+                    {selectedScene.mediaStatus === 'pending' && (
+                      <>
+                        <Textarea
+                          label="Scene Notes"
+                          value={reviewNotes}
+                          onChange={(e) => setReviewNotes(e.target.value)}
+                          placeholder="Add notes for this scene..."
+                          rows={2}
+                        />
+                        <div className="flex gap-2">
+                          <Button variant="green" className="flex-1" onClick={() => handleApproveScene(selectedScene.id)} disabled={isReviewing}>
+                            {isReviewing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                            Approve Scene
+                          </Button>
+                          <Button variant="pink" className="flex-1" onClick={() => handleRejectScene(selectedScene.id)} disabled={isReviewing}>
+                            {isReviewing ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                            Reject Scene
+                          </Button>
+                        </div>
+                        <p className="text-[10px] text-hot-pink/70 text-center">
+                          Rejecting a scene will reject the entire quest
+                        </p>
+                      </>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => setSelectedScene(null)}
+                    className="mt-3 text-xs text-cyan hover:underline"
+                  >
+                    ← Back to quest overview
+                  </button>
+                </div>
+              ) : selectedQuest ? (
+                <div className="p-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <AlertCircle className="w-5 h-5 text-yellow" />
+                    <h3 className="font-bangers text-lg text-white">Quest Review</h3>
+                  </div>
+
+                  <div className="space-y-4">
                     <div className="space-y-2">
-                      <h4 className="font-bangers text-xs text-white/70 uppercase">Quest Info</h4>
-                      <div className="bg-input-bg rounded-lg p-3">
-                        <p className="font-bangers text-sm text-white">{selectedSubmission.questTitle}</p>
-                        <p className="text-xs text-white/50">Scene {selectedSubmission.sceneIndex}</p>
+                      <h4 className="font-bangers text-xs text-white/70 uppercase">Quest Details</h4>
+                      <div className="bg-input-bg rounded-lg p-3 space-y-3">
+                        {selectedQuest.coverImage && (
+                          <img
+                            src={selectedQuest.coverImage}
+                            alt="Quest cover"
+                            className="w-full h-28 object-cover rounded-lg"
+                          />
+                        )}
+                        <p className="font-bangers text-sm text-white">{selectedQuest.questTitle}</p>
+                        {selectedQuest.questDescription && (
+                          <p className="text-xs text-white/60 leading-relaxed">{selectedQuest.questDescription}</p>
+                        )}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="flex items-center gap-1.5 text-xs text-white/70">
+                            <Tag className="w-3 h-3 text-cyan" />
+                            {selectedQuest.genre || 'No genre'}
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs text-white/70">
+                            <BarChart3 className="w-3 h-3 text-purple" />
+                            {selectedQuest.difficulty || 'medium'}
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs text-white/70">
+                            <Shield className="w-3 h-3 text-yellow" />
+                            {selectedQuest.ageRating || 'E'}
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs text-white/70">
+                            <DollarSign className="w-3 h-3 text-neon-green" />
+                            {selectedQuest.price > 0 ? `$${selectedQuest.price.toFixed(2)}` : 'Free'}
+                          </div>
+                          {selectedQuest.city && (
+                            <div className="flex items-center gap-1.5 text-xs text-white/70">
+                              <MapPin className="w-3 h-3 text-hot-pink" />
+                              {selectedQuest.city}
+                            </div>
+                          )}
+                          {selectedQuest.estimatedDuration && (
+                            <div className="flex items-center gap-1.5 text-xs text-white/70">
+                              <Clock className="w-3 h-3 text-orange" />
+                              {selectedQuest.estimatedDuration} min
+                            </div>
+                          )}
+                        </div>
+                        {selectedQuest.usesAI && (
+                          <div className="flex items-center gap-1.5">
+                            <Sparkles className="w-3 h-3 text-cyan" />
+                            <span className="text-xs text-cyan font-bangers">Uses AI Narration</span>
+                          </div>
+                        )}
+                        <p className="text-[10px] text-white/40">{selectedQuest.sceneCount} scene{selectedQuest.sceneCount !== 1 ? 's' : ''}</p>
                       </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <h4 className="font-bangers text-xs text-white/70 uppercase">Scenes</h4>
+                      <div className="space-y-1">
+                        {selectedQuest.scenes.map((scene) => {
+                          const scStatus = statusConfig[scene.mediaStatus] || statusConfig.pending;
+                          return (
+                            <div
+                              key={scene.id}
+                              onClick={() => setSelectedScene(scene)}
+                              className="bg-input-bg rounded-lg p-2 flex items-center gap-2 cursor-pointer hover:bg-panel-border/50 transition-all"
+                            >
+                              <div className={`w-6 h-6 rounded flex items-center justify-center ${
+                                scene.mediaType === 'video' ? 'bg-purple/20' : 'bg-cyan/20'
+                              }`}>
+                                {scene.mediaType === 'video' ? (
+                                  <FileVideo className="w-3 h-3 text-purple" />
+                                ) : (
+                                  <FileAudio className="w-3 h-3 text-cyan" />
+                                )}
+                              </div>
+                              <span className="text-xs text-white font-bangers flex-1">Scene {scene.sceneIndex + 1}</span>
+                              <Badge variant={scStatus.color} className="text-[9px]">
+                                {scStatus.label}
+                              </Badge>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p className="text-[10px] text-white/50">Click a scene to preview its media</p>
                     </div>
 
                     <div className="space-y-2">
@@ -338,20 +535,20 @@ export function AdminDashboard() {
                       <div className="bg-input-bg rounded-lg p-3 space-y-2">
                         <div className="flex items-center gap-2">
                           <User className="w-4 h-4 text-purple" />
-                          <span className="text-sm text-white">{selectedSubmission.writerName}</span>
+                          <span className="text-sm text-white">{selectedQuest.writerName}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <Mail className="w-4 h-4 text-cyan" />
-                          <span className="text-sm text-white/70">{selectedSubmission.writerEmail}</span>
+                          <span className="text-sm text-white/70">{selectedQuest.writerEmail}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <Calendar className="w-4 h-4 text-yellow" />
-                          <span className="text-sm text-white/70">{formatDate(selectedSubmission.updatedAt)}</span>
+                          <span className="text-sm text-white/70">{formatDate(selectedQuest.updatedAt)}</span>
                         </div>
                       </div>
                     </div>
 
-                    {selectedSubmission.mediaStatus === 'pending' ? (
+                    {selectedQuest.submissionStatus === 'pending' ? (
                       <>
                         <Textarea
                           label="Review Notes"
@@ -362,23 +559,13 @@ export function AdminDashboard() {
                         />
 
                         <div className="flex gap-2">
-                          <Button
-                            variant="green"
-                            className="flex-1"
-                            onClick={handleApprove}
-                            disabled={isReviewing}
-                          >
+                          <Button variant="green" className="flex-1" onClick={handleApproveQuest} disabled={isReviewing}>
                             {isReviewing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                            Approve
+                            Approve All
                           </Button>
-                          <Button
-                            variant="pink"
-                            className="flex-1"
-                            onClick={handleReject}
-                            disabled={isReviewing}
-                          >
+                          <Button variant="pink" className="flex-1" onClick={handleRejectQuest} disabled={isReviewing}>
                             {isReviewing ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
-                            Reject
+                            Reject All
                           </Button>
                         </div>
                       </>
@@ -386,12 +573,12 @@ export function AdminDashboard() {
                       <div className="space-y-2">
                         <h4 className="font-bangers text-xs text-white/70 uppercase">Review Result</h4>
                         <div className={`rounded-lg p-3 ${
-                          selectedSubmission.mediaStatus === 'approved' 
+                          selectedQuest.submissionStatus === 'approved' 
                             ? 'bg-neon-green/10 border border-neon-green/30' 
                             : 'bg-hot-pink/10 border border-hot-pink/30'
                         }`}>
-                          <Badge variant={statusConfig[selectedSubmission.mediaStatus]?.color || 'yellow'} className="mb-2">
-                            {statusConfig[selectedSubmission.mediaStatus]?.label || selectedSubmission.mediaStatus}
+                          <Badge variant={statusConfig[selectedQuest.submissionStatus]?.color || 'yellow'} className="mb-2">
+                            {statusConfig[selectedQuest.submissionStatus]?.label || selectedQuest.submissionStatus}
                           </Badge>
                         </div>
                       </div>
@@ -401,9 +588,9 @@ export function AdminDashboard() {
               ) : (
                 <div className="p-8 text-center">
                   <Shield className="w-12 h-12 text-white/20 mx-auto mb-3" />
-                  <p className="font-bangers text-white/70">Select a submission</p>
+                  <p className="font-bangers text-white/70">Select a quest</p>
                   <p className="text-sm text-white/50 mt-1">
-                    Click on a submission to review it
+                    Click on a quest submission to review it
                   </p>
                 </div>
               )}

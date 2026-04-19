@@ -148,6 +148,19 @@ export async function questRoutes(app: FastifyInstance) {
       return result;
     });
 
+    // Submit quest for review (batch — all scenes)
+    protectedRoutes.post('/:questId/submit', async (request, reply) => {
+      const userId = (request.user as any).id;
+      const { questId } = request.params as { questId: string };
+
+      const result = await questService.submitQuestForReview(questId, userId);
+      if ('error' in result) {
+        return reply.status(400).send(result);
+      }
+
+      return result;
+    });
+
     // Delete quest
     protectedRoutes.delete('/:id', async (request, reply) => {
       const userId = (request.user as any).id;
@@ -290,11 +303,10 @@ export async function questRoutes(app: FastifyInstance) {
 
       const mediaUrl = `/api/media/${storedName}`;
 
-      // Update scene in DB
+      // Update scene in DB (status stays as-is; batch submit sets it to pending)
       const scene = await questService.updateScene(sceneId, userId, {
         mediaUrl,
         mediaType,
-        mediaStatus: 'pending',
       });
 
       if (!scene) {
@@ -305,7 +317,6 @@ export async function questRoutes(app: FastifyInstance) {
       return {
         mediaUrl,
         mediaType,
-        mediaStatus: 'pending',
         fileName: data.filename,
         storedName,
       };

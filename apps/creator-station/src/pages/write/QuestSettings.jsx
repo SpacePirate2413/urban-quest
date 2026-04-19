@@ -1,11 +1,15 @@
-import { useState, useRef } from 'react';
-import { Settings, DollarSign, Sparkles, CreditCard, Mic, ImagePlus, X } from 'lucide-react';
-import { Button, Card, Input, Textarea, Select, Badge } from '../../components/ui';
-import { useWriterStore, GENRES, NARRATOR_VOICES } from '../../store/useWriterStore';
+import { CreditCard, DollarSign, ImagePlus, Mic, Settings, Sparkles, X } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Badge, Button, Card, Input, Select, Textarea } from '../../components/ui';
+import { api } from '../../services/api';
+import { GENRES, NARRATOR_VOICES, useWriterStore } from '../../store/useWriterStore';
 
 export function QuestSettings({ questId }) {
-  const { quests, updateQuest, writer } = useWriterStore();
+  const { quests, updateQuest, deleteQuest, writer } = useWriterStore();
   const quest = quests.find(q => q.id === questId);
+  const navigate = useNavigate();
+  const [isDeleting, setIsDeleting] = useState(false);
 
   if (!quest) return null;
 
@@ -58,7 +62,7 @@ export function QuestSettings({ questId }) {
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-6">
           <Settings className="w-5 h-5 text-cyan" />
-          <h3 className="font-bangers text-xl text-white">Quest Settings</h3>
+          <h3 className="font-bangers text-xl text-white">Quest Details</h3>
         </div>
 
         <div className="space-y-5">
@@ -304,8 +308,25 @@ export function QuestSettings({ questId }) {
               This action cannot be undone. All waypoints and scenes will be deleted.
             </p>
           </div>
-          <Button variant="danger-outline" size="sm">
-            Delete Quest
+          <Button
+            variant="danger-outline"
+            size="sm"
+            disabled={isDeleting}
+            onClick={async () => {
+              if (!window.confirm('Are you sure you want to delete this quest? This cannot be undone.')) return;
+              setIsDeleting(true);
+              try {
+                await api.deleteQuest(questId);
+                deleteQuest(questId);
+                navigate('/write');
+              } catch (err) {
+                console.error('Delete failed:', err);
+                alert(`Delete failed: ${err.message}`);
+                setIsDeleting(false);
+              }
+            }}
+          >
+            {isDeleting ? 'Deleting...' : 'Delete Quest'}
           </Button>
         </div>
       </Card>

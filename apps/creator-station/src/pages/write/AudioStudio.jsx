@@ -9,6 +9,7 @@ import {
     Pause,
     Play,
     RefreshCw,
+    Rocket,
     Send,
     Settings,
     Trash2,
@@ -24,7 +25,7 @@ import { ttsService } from '../../services/ttsService';
 import { NARRATOR_VOICES, useWriterStore } from '../../store/useWriterStore';
 
 export function AudioStudio({ questId }) {
-  const { quests, updateQuest, updateScene, submitSceneMedia } = useWriterStore();
+  const { quests, updateQuest, updateScene } = useWriterStore();
   const quest = quests.find(q => q.id === questId);
   
   const [selectedSceneId, setSelectedSceneId] = useState(null);
@@ -37,6 +38,7 @@ export function AudioStudio({ questId }) {
   const [audioMode, setAudioMode] = useState('upload');
   const [uploadedFile, setUploadedFile] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
   
   const [voiceControls, setVoiceControls] = useState({
     exaggeration: 0.5,
@@ -112,8 +114,8 @@ export function AudioStudio({ questId }) {
     }
   };
 
-  const handleSubmitForReview = async () => {
-    if (!uploadedFile || !selectedSceneId) return;
+  const handleUploadMedia = async () => {
+    if (!uploadedFile?.file || !selectedSceneId) return;
     
     setIsSubmitting(true);
     
@@ -135,7 +137,7 @@ export function AudioStudio({ questId }) {
         setSelectedSceneId(sceneId);
       }
 
-      // Upload real file to API
+      // Upload real file to API (no submission status yet)
       const result = await api.uploadSceneMedia(sceneId, uploadedFile.file);
       
       // Update local scene state with the returned media info
@@ -143,16 +145,47 @@ export function AudioStudio({ questId }) {
         mediaFile: result.fileName,
         mediaUrl: result.mediaUrl,
         mediaType: result.mediaType,
-        mediaStatus: 'pending',
-        submittedAt: new Date().toISOString(),
       });
       
-      setUploadedFile(prev => ({ ...prev, status: 'pending', mediaUrl: result.mediaUrl }));
+      setUploadedFile(prev => ({ ...prev, status: 'uploaded', mediaUrl: result.mediaUrl }));
     } catch (err) {
       console.error('Upload failed:', err);
       alert(`Upload failed: ${err.message}`);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const allScenesHaveMedia = quest?.scenes.length > 0 && quest.scenes.every(s => s.mediaUrl);
+
+  const handleSubmitQuestForReview = async () => {
+    if (!allScenesHaveMedia) return;
+    setIsSubmitting(true);
+    try {
+      await api.submitQuest(questId);
+      // Update all scenes locally to pending
+      quest.scenes.forEach(s => {
+        updateScene(questId, s.id, { mediaStatus: 'pending' });
+      });
+      updateQuest(questId, { submissionStatus: 'pending' });
+    } catch (err) {
+      console.error('Submit quest failed:', err);
+      alert(`Submit failed: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handlePublishQuest = async () => {
+    setIsPublishing(true);
+    try {
+      await api.publishQuest(questId);
+      updateQuest(questId, { status: 'published', submissionStatus: 'approved' });
+    } catch (err) {
+      console.error('Publish failed:', err);
+      alert(`Publish failed: ${err.message}`);
+    } finally {
+      setIsPublishing(false);
     }
   };
 
@@ -270,10 +303,15 @@ export function AudioStudio({ questId }) {
   if (!quest) return null;
 
   const statusBadge = {
+    uploaded: { variant: 'cyan', icon: CheckCircle, text: 'Uploaded' },
     pending: { variant: 'yellow', icon: Clock, text: 'Pending Review' },
     approved: { variant: 'green', icon: CheckCircle, text: 'Approved' },
     rejected: { variant: 'pink', icon: XCircle, text: 'Rejected' },
   };
+
+  const scenesUploaded = quest?.scenes.filter(s => s.mediaUrl).length || 0;
+  const totalScenes = quest?.scenes.length || 0;
+  const questSubmissionStatus = quest?.submissionStatus;
 
   return (
     <div className="flex gap-6 h-[calc(100vh-220px)] min-h-[500px]">
@@ -380,23 +418,23 @@ export function AudioStudio({ questId }) {
                     )}
                   </div>
 
-                  {uploadedFile.url && !uploadedFile.status && (
+                  {uploadedFile.url && uploadedFile.file && uploadedFile.status !== 'uploaded' && (
                     <div className="mt-4 flex gap-2">
                       <Button
-                        variant="green"
+                        variant="cyan"
                         className="flex-1"
-                        onClick={handleSubmitForReview}
+                        onClick={handleUploadMedia}
                         disabled={isSubmitting}
                       >
                         {isSubmitting ? (
                           <>
                             <RefreshCw className="w-4 h-4 animate-spin" />
-                            Submitting...
+                            Uploading...
                           </>
                         ) : (
                           <>
-                            <Send className="w-4 h-4" />
-                            Submit for Review
+                            <Upload className="w-4 h-4" />
+                            Upload Media
                           </>
                         )}
                       </Button>
@@ -490,6 +528,114 @@ export function AudioStudio({ questId }) {
               </p>
             </div>
           </div>
+        )}
+
+        {totalScenes > 0 && (
+          <Card className="p-4 mt-2">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Send className="w-5 h-5 text-orange" />
+                <h4 className="font-bangers text-sm text-white">Submit Quest for Review</h4>
+              </div>
+              <span className="text-xs text-white/50 font-bangers">
+                {scenesUploaded}/{totalScenes} scenes uploaded
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+              {quest.scenes.map((scene, idx) => (
+                <div
+                  key={scene.id}
+                  className={`rounded-lg px-3 py-2 text-xs font-bangers flex items-center gap-2 ${
+                    scene.mediaUrl
+                      ? scene.mediaStatus === 'pending'
+                        ? 'bg-yellow/10 text-yellow border border-yellow/30'
+                        : scene.mediaStatus === 'approved'
+                        ? 'bg-neon-green/10 text-neon-green border border-neon-green/30'
+                        : scene.mediaStatus === 'rejected'
+                        ? 'bg-hot-pink/10 text-hot-pink border border-hot-pink/30'
+                        : 'bg-cyan/10 text-cyan border border-cyan/30'
+                      : 'bg-panel-border text-white/50'
+                  }`}
+                >
+                  {scene.mediaUrl ? (
+                    <CheckCircle className="w-3 h-3" />
+                  ) : (
+                    <XCircle className="w-3 h-3" />
+                  )}
+                  Scene {idx + 1}
+                </div>
+              ))}
+            </div>
+
+            {questSubmissionStatus && statusBadge[questSubmissionStatus] && (
+              <div className="mb-3">
+                <Badge variant={statusBadge[questSubmissionStatus].variant}>
+                  {React.createElement(statusBadge[questSubmissionStatus].icon, { className: 'w-3 h-3' })}
+                  Quest {statusBadge[questSubmissionStatus].text}
+                </Badge>
+              </div>
+            )}
+
+            {(!questSubmissionStatus || questSubmissionStatus === 'rejected') && (
+              <Button
+                variant="green"
+                className="w-full"
+                onClick={handleSubmitQuestForReview}
+                disabled={!allScenesHaveMedia || isSubmitting}
+              >
+                {isSubmitting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    {questSubmissionStatus === 'rejected' ? 'Resubmit All Scenes' : 'Submit All Scenes for Review'}
+                  </>
+                )}
+              </Button>
+            )}
+
+            {!allScenesHaveMedia && !questSubmissionStatus && (
+              <p className="text-xs text-white/50 mt-2 text-center">
+                Upload media for all scenes before submitting
+              </p>
+            )}
+          </Card>
+        )}
+
+        {questSubmissionStatus === 'approved' && quest?.status !== 'published' && (
+          <Card className="p-4 mt-2 border-neon-green/30 bg-neon-green/5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-neon-green/20 flex items-center justify-center">
+                <Rocket className="w-5 h-5 text-neon-green" />
+              </div>
+              <div>
+                <p className="font-bangers text-sm text-neon-green">Quest Approved!</p>
+                <p className="text-xs text-white/60">Your quest has been approved by admin. Ready to publish?</p>
+              </div>
+            </div>
+            <Button
+              variant="green"
+              className="w-full"
+              onClick={handlePublishQuest}
+              disabled={isPublishing}
+            >
+              {isPublishing ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Publishing...
+                </>
+              ) : (
+                <>
+                  <Rocket className="w-4 h-4" />
+                  Publish Quest
+                </>
+              )}
+            </Button>
+          </Card>
         )}
       </div>
 

@@ -1,9 +1,11 @@
 import { create } from 'zustand';
+import { api } from '../services/api';
 import {
     FilterOptions,
     LocationCoords,
     PurchasedQuest,
     Quest,
+    QuestStatus,
     ScoutedWaypoint,
     User,
     ViewMode,
@@ -183,40 +185,50 @@ export const useQuestStore = create<QuestState>((set) => ({
         minPrice: filters.priceRange === 'free' ? 0 : undefined,
         maxPrice: filters.priceRange === 'free' ? 0 : filters.priceRange === 'under5' ? 5 : filters.priceRange === 'under10' ? 10 : undefined,
       });
+      if (!quests || quests.length === 0) {
+        set({ isLoading: false });
+        return;
+      }
       // Transform API response to match local Quest type
       const transformedQuests: Quest[] = quests.map((q: any) => ({
         id: q.id,
         title: q.title,
-        tagline: q.tagline || q.description?.slice(0, 100),
+        tagline: q.description?.slice(0, 100) || '',
         description: q.description || '',
+        authorId: q.author?.id || q.authorId || '',
+        authorUsername: q.author?.name || 'Unknown',
+        authorAvatarUrl: q.author?.avatarUrl || 'https://picsum.photos/100',
+        status: QuestStatus.PUBLISHED,
         coverImageUrl: q.coverImage || 'https://picsum.photos/400/300',
-        price: q.price,
-        isFree: q.price === 0,
-        rating: q.averageRating || 0,
+        estimatedDurationMinutes: q.estimatedDuration || 60,
+        estimatedDistanceMeters: 2000,
+        difficulty: (q.difficulty || 'Moderate') as any,
+        price: q.price ?? 0,
+        isFree: (q.price ?? 0) === 0,
+        ageRating: (q.ageRating || '4+') as any,
+        category: q.genre || 'Adventure',
+        playerCount: q._count?.purchases || 0,
+        minPlayers: 1,
+        maxPlayers: 4,
+        averageRating: q.averageRating || undefined,
         reviewCount: q._count?.reviews || 0,
-        difficulty: q.difficulty as any,
-        estimatedDuration: q.estimatedDuration || 60,
-        totalDistance: q.totalDistance || 2,
-        category: q.genre,
-        ageRating: q.ageRating,
-        creator: {
-          id: q.author?.id || '',
-          name: q.author?.name || 'Unknown',
-          avatarUrl: q.author?.avatarUrl,
+        createdAt: new Date(q.createdAt),
+        firstWaypointLocation: {
+          latitude: q.waypoints?.[0]?.lat || 40.7128,
+          longitude: q.waypoints?.[0]?.lng || -74.0060,
         },
-        startLocation: {
-          lat: q.startLat || q.waypoints?.[0]?.lat || 40.7128,
-          lng: q.startLng || q.waypoints?.[0]?.lng || -74.0060,
-        },
-        waypoints: (q.waypoints || []).map((wp: any) => ({
+        characters: [],
+        waypoints: (q.waypoints || []).map((wp: any, i: number) => ({
           id: wp.id,
-          name: wp.name,
-          description: wp.description,
-          location: { lat: wp.lat, lng: wp.lng },
+          questId: q.id,
+          title: wp.name || `Waypoint ${i + 1}`,
+          description: wp.description || '',
+          order: i + 1,
+          location: { latitude: wp.lat || 0, longitude: wp.lng || 0 },
+          radius: 15,
           scenes: [],
         })),
-        createdAt: new Date(q.createdAt),
-        updatedAt: new Date(q.updatedAt),
+        reviews: [],
       }));
       set({ quests: transformedQuests, isLoading: false });
     } catch (err) {

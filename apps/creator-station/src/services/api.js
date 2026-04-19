@@ -133,6 +133,14 @@ class ApiClient {
     });
   }
 
+  // Submit entire quest for review (batch)
+  async submitQuest(questId) {
+    return this.request(`/quests/${questId}/submit`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  }
+
   // Media upload (multipart - bypasses JSON content-type)
   async uploadSceneMedia(sceneId, file) {
     const formData = new FormData();
@@ -167,7 +175,14 @@ class ApiClient {
     return this.request(`/admin/submissions?${params}`);
   }
 
-  async reviewSubmission(sceneId, status, notes) {
+  async reviewQuestSubmission(questId, status, notes) {
+    return this.request(`/admin/submissions/quest/${questId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, notes }),
+    });
+  }
+
+  async reviewSceneSubmission(sceneId, status, notes) {
     return this.request(`/admin/submissions/${sceneId}`, {
       method: 'PATCH',
       body: JSON.stringify({ status, notes }),

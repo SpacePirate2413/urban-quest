@@ -206,13 +206,17 @@ function QuestCard({ quest, onClick }) {
 
         {quest.status === 'published' && (
           <div className="flex items-center justify-between pt-3 border-t border-panel-border">
-            <div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs">
+                {quest.price === 0 ? (
+                  <span className="text-neon-green font-bangers">FREE</span>
+                ) : (
+                  <span className="text-yellow font-bangers">${quest.price.toFixed(2)}</span>
+                )}
+              </span>
               <span className="text-xs text-white/70">
                 <span className="text-yellow font-bangers">{quest.sales}</span> plays
               </span>
-              {quest.price === 0 && (
-                <span className="text-[10px] text-white/50 block">Ad supported</span>
-              )}
             </div>
             <span className="text-xs text-neon-green font-bangers">
               ${quest.revenue.toFixed(2)}
