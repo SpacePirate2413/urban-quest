@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { TopBar } from './components/layout';
 import { AdminDashboard } from './pages/admin';
+import { CreatorProfile } from './pages/profile';
 import { QuestEditor, WriterDashboard } from './pages/write';
 import { useWriterStore } from './store/useWriterStore';
 
@@ -106,6 +107,7 @@ function AppContent() {
           <Route path="/" element={<Navigate to="/write" replace />} />
           <Route path="/write" element={<WriterDashboard />} />
           <Route path="/write/quest/:id" element={<QuestEditor />} />
+          <Route path="/profile" element={<CreatorProfile />} />
         </Routes>
       </main>
     </div>

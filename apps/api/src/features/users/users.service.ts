@@ -13,6 +13,8 @@ export interface CreateUserInput {
 export interface UpdateUserInput {
   name?: string;
   avatarUrl?: string;
+  bio?: string;
+  genres?: string;
 }
 
 export const usersService = {

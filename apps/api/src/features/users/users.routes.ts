@@ -49,7 +49,7 @@ export async function usersRoutes(app: FastifyInstance) {
     preHandler: [app.authenticate],
     handler: async (request) => {
       const userId = (request.user as { id: string }).id;
-      const updates = request.body as { name?: string; avatarUrl?: string };
+      const updates = request.body as { name?: string; avatarUrl?: string; bio?: string; genres?: string };
       return usersService.update(userId, updates);
     },
   });

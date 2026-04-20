@@ -81,6 +81,14 @@ export function QuestSettings({ questId }) {
             rows={4}
           />
 
+          <Input
+            label="Tagline"
+            value={quest.tagline || ''}
+            onChange={(e) => handleUpdate('tagline', e.target.value)}
+            placeholder="A short catchy tagline..."
+            maxLength={100}
+          />
+
           <div>
             <label className="font-bangers text-xs uppercase tracking-wider text-white block mb-2">
               Quest Cover Image
@@ -166,6 +174,26 @@ export function QuestSettings({ questId }) {
               </div>
               <p className="text-xs text-white/50 mt-1">
                 Set to 0 for free quest
+              </p>
+            </div>
+
+            <div>
+              <label className="font-bangers text-xs uppercase tracking-wider text-white block mb-1">
+                Estimated Duration
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="1"
+                  step="5"
+                  value={quest.estimatedDuration || ''}
+                  onChange={(e) => handleUpdate('estimatedDuration', parseInt(e.target.value) || null)}
+                  placeholder="45"
+                  className="w-full bg-input-bg border-[1.5px] border-panel-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan transition-colors"
+                />
+              </div>
+              <p className="text-xs text-white/50 mt-1">
+                Time in minutes
               </p>
             </div>
           </div>

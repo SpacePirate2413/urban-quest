@@ -12,6 +12,8 @@ model User {
   email     String   @unique
   name      String?
   avatarUrl String?
+  bio       String?
+  genres    String?  // comma-separated genre list
   birthdate DateTime?
   role      String   @default("player") // player | writer | admin
   

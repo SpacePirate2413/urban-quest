@@ -56,6 +56,13 @@ class ApiClient {
     this.setToken(null);
   }
 
+  async updateProfile(data) {
+    return this.request('/users/me', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
   // Quests
   async getMyQuests() {
     return this.request('/quests/my');
@@ -89,6 +96,11 @@ class ApiClient {
     return this.request(`/quests/${id}`, {
       method: 'DELETE',
     });
+  }
+
+  // Reviews
+  async getQuestReviews(questId) {
+    return this.request(`/reviews/quest/${questId}`);
   }
 
   // Waypoints

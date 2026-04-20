@@ -12,7 +12,6 @@ import {
     FileVideo,
     Loader2,
     Mail,
-    MapPin,
     Shield,
     Sparkles,
     Tag,
@@ -465,10 +464,6 @@ export function AdminDashboard() {
                             {selectedQuest.genre || 'No genre'}
                           </div>
                           <div className="flex items-center gap-1.5 text-xs text-white/70">
-                            <BarChart3 className="w-3 h-3 text-purple" />
-                            {selectedQuest.difficulty || 'medium'}
-                          </div>
-                          <div className="flex items-center gap-1.5 text-xs text-white/70">
                             <Shield className="w-3 h-3 text-yellow" />
                             {selectedQuest.ageRating || 'E'}
                           </div>
@@ -476,18 +471,10 @@ export function AdminDashboard() {
                             <DollarSign className="w-3 h-3 text-neon-green" />
                             {selectedQuest.price > 0 ? `$${selectedQuest.price.toFixed(2)}` : 'Free'}
                           </div>
-                          {selectedQuest.city && (
-                            <div className="flex items-center gap-1.5 text-xs text-white/70">
-                              <MapPin className="w-3 h-3 text-hot-pink" />
-                              {selectedQuest.city}
-                            </div>
-                          )}
-                          {selectedQuest.estimatedDuration && (
-                            <div className="flex items-center gap-1.5 text-xs text-white/70">
-                              <Clock className="w-3 h-3 text-orange" />
-                              {selectedQuest.estimatedDuration} min
-                            </div>
-                          )}
+                          <div className="flex items-center gap-1.5 text-xs text-white/70">
+                            <Clock className="w-3 h-3 text-orange" />
+                            {selectedQuest.estimatedDuration ? `${selectedQuest.estimatedDuration} min` : 'Not set'}
+                          </div>
                         </div>
                         {selectedQuest.usesAI && (
                           <div className="flex items-center gap-1.5">

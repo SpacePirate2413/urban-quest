@@ -142,9 +142,17 @@ export async function publishQuest(id: string, authorId: string) {
   if (quest.waypoints.length === 0) return { error: 'Quest must have at least one waypoint' };
   if (quest.scenes.length === 0) return { error: 'Quest must have at least one scene' };
 
+  // Auto-set starting location from first waypoint
+  const firstWaypoint = quest.waypoints.sort((a, b) => a.orderIndex - b.orderIndex)[0];
+  const locationData: Record<string, any> = {};
+  if (firstWaypoint) {
+    locationData.startLat = firstWaypoint.lat;
+    locationData.startLng = firstWaypoint.lng;
+  }
+
   return prisma.quest.update({
     where: { id },
-    data: { status: 'published', publishedAt: new Date() },
+    data: { status: 'published', publishedAt: new Date(), ...locationData },
     include: questInclude,
   });
 }

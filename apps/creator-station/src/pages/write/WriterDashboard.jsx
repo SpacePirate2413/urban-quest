@@ -8,6 +8,7 @@ import {
     Plus,
     ShoppingCart,
     Sparkles,
+    Star,
     Theater
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -200,6 +201,12 @@ function QuestCard({ quest, onClick }) {
             <span className="flex items-center gap-1" style={{ color: voice.color }}>
               <Mic className="w-3 h-3" />
               {voice.name}
+            </span>
+          )}
+          {quest.averageRating > 0 && (
+            <span className="flex items-center gap-1 text-yellow">
+              <Star className="w-3 h-3 fill-yellow" />
+              {quest.averageRating.toFixed(1)}
             </span>
           )}
         </div>

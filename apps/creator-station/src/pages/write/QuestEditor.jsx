@@ -1,9 +1,10 @@
-import { ArrowLeft, Film, Headphones, MapPin, Settings } from 'lucide-react';
+import { ArrowLeft, Film, Headphones, MapPin, Settings, Star } from 'lucide-react';
 import { useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui';
 import { useWriterStore } from '../../store/useWriterStore';
 import { AudioStudio } from './AudioStudio';
+import { QuestReviews } from './QuestReviews';
 import { QuestSettings } from './QuestSettings';
 import { ScreenplayEditor } from './ScreenplayEditor';
 import { WaypointEditor } from './WaypointEditor';
@@ -61,6 +62,9 @@ export function QuestEditor() {
             <TabsTrigger value="settings" icon={<Settings className="w-4 h-4" />}>
               Quest Details
             </TabsTrigger>
+            <TabsTrigger value="reviews" icon={<Star className="w-4 h-4" />}>
+              Reviews
+            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -79,6 +83,10 @@ export function QuestEditor() {
           
           <TabsContent value="settings" className="h-full overflow-y-auto">
             <QuestSettings questId={quest.id} />
+          </TabsContent>
+          
+          <TabsContent value="reviews" className="h-full overflow-y-auto">
+            <QuestReviews questId={quest.id} />
           </TabsContent>
         </div>
       </Tabs>

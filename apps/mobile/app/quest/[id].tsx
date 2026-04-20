@@ -1,13 +1,14 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, Linking } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
-import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
-import { useQuestStore } from '@/src/store';
 import { MOCK_QUESTS } from '@/src/data/mockData';
+import { useQuestStore } from '@/src/store';
+import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
+import { router, useLocalSearchParams } from 'expo-router';
+import React from 'react';
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function QuestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const quest = MOCK_QUESTS.find((q) => q.id === id) || MOCK_QUESTS[0];
+  const { quests, selectedQuest } = useQuestStore();
+  const quest = quests.find((q) => q.id === id) || selectedQuest || MOCK_QUESTS.find((q) => q.id === id) || MOCK_QUESTS[0];
 
   const handlePurchase = () => {
     router.push(`/quest/checkout?id=${quest.id}`);
@@ -65,25 +66,31 @@ export default function QuestDetailScreen() {
             <Text style={Typography.headerMedium}>Details</Text>
             <View style={styles.detailsGrid}>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Difficulty</Text>
-                <Text style={styles.detailValue}>
-                  Creator: {quest.difficulty} | Players: {quest.playerDifficultyRating?.toFixed(1) || 'N/A'}/5
-                </Text>
-              </View>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Players</Text>
-                <Text style={styles.detailValue}>
-                  {quest.minPlayers === quest.maxPlayers ? quest.minPlayers : `${quest.minPlayers}-${quest.maxPlayers}`} players
-                </Text>
-              </View>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Category</Text>
+                <Text style={styles.detailLabel}>Genre</Text>
                 <Text style={styles.detailValue}>{quest.category}</Text>
               </View>
               <View style={styles.detailItem}>
                 <Text style={styles.detailLabel}>Age Rating</Text>
                 <Text style={styles.detailValue}>{quest.ageRating}</Text>
               </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Price</Text>
+                <Text style={[styles.detailValue, { color: quest.isFree ? Colors.success : Colors.accentYellow }]}>
+                  {quest.isFree ? 'Free' : `$${quest.price.toFixed(2)}`}
+                </Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Est. Duration</Text>
+                <Text style={styles.detailValue}>
+                  {quest.estimatedDurationMinutes ? `${quest.estimatedDurationMinutes} min` : 'Not set'}
+                </Text>
+              </View>
+              {quest.usesAI && (
+                <View style={styles.detailItem}>
+                  <Text style={styles.detailLabel}>Narration</Text>
+                  <Text style={[styles.detailValue, { color: Colors.accentCyan }]}>✨ AI Generated</Text>
+                </View>
+              )}
             </View>
           </View>
 
