@@ -86,3 +86,31 @@ Mobile app uses OAuth (Apple/Google) → exchanges for JWT from our API.
 3. Token lifetime / refresh strategy?
 4. "Sync for creator station" scope?
 5. Where to maintain endpoint schemas?
+
+
+## Control Flow Diagram
+
+```mermaid
+flowchart TD
+    A[User Opens App] --> B[Check Auth Status]
+    B --> C{Has Valid Token?}
+    C -->|Yes| D[Load User Data]
+    C -->|No| E[Show Login Screen]
+    E --> F[User Authenticates]
+    F --> G[Exchange OAuth for JWT]
+    G --> H[Store JWT Securely]
+    H --> I[Load User Data]
+    I --> J[Show Main App]
+    
+    J --> K{Feature Needs API?}
+    K -->|Yes| L[Make API Request]
+    L --> M{Request Successful?}
+    M -->|Yes| N[Update State/Cache]
+    M -->|No| O[Handle Error]
+    O --> P{Should Retry?}
+    P -->|Yes| L
+    P -->|No| Q[Show Error Message]
+    
+    K -->|No| R[Use Local Data]
+    R --> N
+```

@@ -8,6 +8,12 @@
 - `apps/creator-station` — Vite + React 19 + TailwindCSS 4 + Zustand
 - `apps/api` — Fastify 5 + Prisma (SQLite) + Zod
 
+## Terminology
+
+- **Admin Portal** — The `AdminDashboard` page in creator-station, served at `/admin`
+- **DB Portal** — Prisma Studio (`pnpm api:db:studio`)
+- **Refresh Links** — Start the API, creator-station, and mobile (Expo) apps with the latest code, then open their URLs. See skill `architect/refresh-links`.
+
 ## Code Map
 
 ```
@@ -50,6 +56,7 @@ packages/                      # Shared packages (future)
 pnpm api:dev          # Start API (tsx watch)
 pnpm creator:dev      # Start creator-station (Vite)
 pnpm mobile:start     # Start Expo dev server
+pnpm mobile:ios       # Start Expo + open iOS simulator
 pnpm api:db:studio    # Open Prisma Studio
 pnpm api:db:push      # Push schema to DB
 ```
