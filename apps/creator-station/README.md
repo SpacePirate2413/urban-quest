@@ -256,3 +256,93 @@ The SPA redirect ensures client-side routing works on refresh.
 2. Page-level components go in `pages/` — they can use the store
 3. Follow existing Tailwind patterns; avoid inline styles except for dynamic colors
 4. Use `font-bangers` for headings, system font for body, `font-courier` for scripts
+
+---
+
+## Update: Full-Stack Platform (Current State)
+
+> **The information above documents the original frontend-only prototype.** Since then, Urban Quest has evolved into a full-stack monorepo with a backend API, a mobile app, and real data persistence. The sections below describe where the project stands today.
+
+### Monorepo Architecture
+
+Urban Quest is now a **pnpm workspaces monorepo** with three apps:
+
+| App | Stack | Purpose |
+|-----|-------|---------|
+| `apps/creator-station` | Vite + React 19 + TailwindCSS 4 + Zustand | Web app for creators to build quests |
+| `apps/api` | Fastify 5 + Prisma (SQLite) + Zod | REST API with JWT auth, file uploads, and all CRUD operations |
+| `apps/mobile` | Expo 54 + expo-router (React Native) | iOS/Android player app for discovering, purchasing, and playing quests |
+
+### What Changed from the Prototype
+
+**Persistence** — Data is no longer in-memory. All quests, waypoints, scenes, users, purchases, and reviews are stored in a SQLite database via Prisma ORM. The Zustand store now syncs with the API instead of holding state alone.
+
+**Authentication** — Real auth flows replaced the hardcoded roles. The API supports Google OAuth, Apple Sign-In, and a dev bypass mode. JWT tokens authenticate both the Creator Station (cookie-based) and the mobile app (Bearer token). Users have roles: `player`, `writer`, `admin`.
+
+**API Layer** — A Fastify 5 API (`apps/api`) handles all backend logic with a feature-first folder structure:
+- `features/quests/` — Quest CRUD, waypoint/scene management, media uploads, submission workflow
+- `features/users/` — Auth (Google, Apple, dev), profile management, scouted waypoints
+- `features/purchases/` — Purchase flow, ownership checks, progress tracking
+- `features/reviews/` — Player ratings and comments
+
+**Media Uploads** — Scene audio/video and scouted waypoint media are uploaded via multipart form data to `apps/api/uploads/` and served at `/api/media/`. No more blob URLs.
+
+**Mobile App** — A full React Native app with:
+- **Explore tab** — Browse and search published quests with filters (genre, difficulty, city)
+- **Library tab** — View purchased quests and resume progress
+- **Scout tab** — Drop GPS pins, attach photos/videos/audio recordings, and save waypoints for later use in the Creator Station
+- **Profile tab** — User settings and account management
+
+**Saved Waypoints (Scout → Creator Station)** — Creators can scout real-world locations from the mobile app (capturing GPS, notes, photos, videos, and audio), then pull those scouted waypoints into the Creator Station when building quests. This bridges fieldwork and desk authoring.
+
+**Admin Portal** — The admin review queue at `/admin` now reads from the real database, showing actual pending submissions with uploaded media.
+
+### Updated Commands
+
+All commands run from the monorepo root:
+
+| Command | Description |
+|---------|-------------|
+| `pnpm api:dev` | Start the API server (tsx watch, port 3001) |
+| `pnpm creator:dev` | Start Creator Station (Vite, port 5173) |
+| `pnpm mobile:start` | Start Expo dev server (Metro, port 8081) |
+| `pnpm mobile:ios` | Start Expo + open iOS simulator |
+| `pnpm api:db:studio` | Open Prisma Studio (database GUI) |
+| `pnpm api:db:push` | Push Prisma schema changes to the database |
+
+### Updated Data Model
+
+```
+User
+├── quests[]            → Quest (author relationship)
+├── purchases[]         → Purchase (player relationship)
+├── reviews[]           → Review
+└── scoutedWaypoints[]  → ScoutedWaypoint (mobile scouting)
+
+Quest
+├── waypoints[]         → Waypoint { name, lat, lng, photo }
+├── scenes[]            → Scene { script, question, choices[], media }
+├── purchases[]         → Purchase { amount, progress }
+└── reviews[]           → Review { rating, comment }
+
+ScoutedWaypoint         → { name, notes, lat, lng, photos[], videos[], audioRecordings[] }
+```
+
+### Resolved Open Questions
+
+| Original Question | Resolution |
+|---|---|
+| Backend API shape? | REST API via Fastify 5 with feature-based routing. Zod for validation. |
+| Authentication? | JWT via `@fastify/jwt`. Google OAuth, Apple Sign-In, and dev bypass. |
+| Map integration? | Creator Station still uses a simplified canvas. Mobile uses GPS for scouting. |
+| Media storage? | Local disk (`apps/api/uploads/`) served via `@fastify/static`. Cloud storage is a future concern. |
+| TTS hosting? | Chatterbox TTS integration remains — self-hosted, with mock fallback. |
+| Mobile app? | Expo 54 React Native app with tab navigation, quest playback, and scouting. |
+
+### Remaining Known Limitations
+
+1. **SQLite** — Suitable for development; Postgres migration planned for production.
+2. **Local file storage** — Uploads live on disk, not cloud storage (S3/R2) yet.
+3. **No payment processing** — Purchase flow exists but Stripe integration is not wired up.
+4. **No real map in Creator Station** — Waypoint editor still uses the grid canvas (mobile uses real GPS).
+5. **No shared packages** — `packages/` directory is reserved but apps share no runtime code yet.
