@@ -136,6 +136,39 @@ class ApiClient {
       body: JSON.stringify(data),
     });
   }
+
+  async deleteScoutedWaypoint(id: string) {
+    return this.request<{ success: boolean }>(`/users/scouted-waypoints/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async uploadScoutedMedia(waypointId: string, fileUri: string, mimeType: string, fileName: string) {
+    const formData = new FormData();
+    formData.append('file', {
+      uri: fileUri,
+      type: mimeType,
+      name: fileName,
+    } as any);
+
+    const headers: Record<string, string> = {};
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
+
+    const response = await fetch(`${API_BASE}/users/scouted-waypoints/${waypointId}/upload`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Upload failed' }));
+      throw new Error(error.error || 'Upload failed');
+    }
+
+    return response.json() as Promise<{ mediaUrl: string; field: string; waypoint: any }>;
+  }
 }
 
 export const api = new ApiClient();

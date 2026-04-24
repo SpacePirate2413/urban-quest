@@ -1,13 +1,43 @@
-import { useState, useRef } from 'react';
-import { MapPin, Plus, Trash2 } from 'lucide-react';
-import { Button, Card, Input, Textarea } from '../../components/ui';
+import {
+    Bookmark,
+    Camera,
+    ChevronRight,
+    FileAudio,
+    MapPin,
+    Play,
+    Plus,
+    PlusCircle,
+    Trash2,
+    Video,
+    X
+} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Badge, Button, Card, Input, Textarea } from '../../components/ui';
 import { useWriterStore } from '../../store/useWriterStore';
 
 export function WaypointEditor({ questId }) {
-  const { quests, addWaypoint, updateWaypoint, deleteWaypoint } = useWriterStore();
+  const {
+    quests,
+    addWaypoint,
+    updateWaypoint,
+    deleteWaypoint,
+    scoutedWaypoints,
+    scoutedWaypointsLoaded,
+    loadScoutedWaypoints,
+    deleteScoutedWaypoint,
+  } = useWriterStore();
   const quest = quests.find(q => q.id === questId);
   const [selectedWaypointId, setSelectedWaypointId] = useState(null);
+  const [showSavedPanel, setShowSavedPanel] = useState(false);
+  const [expandedScoutId, setExpandedScoutId] = useState(null);
+  const [mediaPreview, setMediaPreview] = useState(null);
   const mapRef = useRef(null);
+
+  useEffect(() => {
+    if (showSavedPanel && !scoutedWaypointsLoaded) {
+      loadScoutedWaypoints();
+    }
+  }, [showSavedPanel, scoutedWaypointsLoaded, loadScoutedWaypoints]);
 
   if (!quest) return null;
 
@@ -19,22 +49,16 @@ export function WaypointEditor({ questId }) {
 
   const handleMapClick = (e) => {
     if (!mapRef.current) return;
-    
-    // Don't create waypoint if clicking on an existing pin or button
     if (e.target.closest('button')) return;
-    
+
     const rect = mapRef.current.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
-    
-    // Convert percentage position to lat/lng (reverse of display formula)
-    // Display formula: x = ((lng + 74.1) * 500) % 80 + 10
-    // Display formula: y = ((lat - 40.7) * 500) % 70 + 15
-    // We'll use a simpler direct mapping for the prototype
+
     const lng = -74.0060 + (x - 50) * 0.002;
     const lat = 40.7128 + (50 - y) * 0.002;
-    
-    const newWaypoint = addWaypoint(questId, { lat, lng });
+
+    addWaypoint(questId, { lat, lng });
   };
 
   const handleUpdateWaypoint = (field, value) => {
@@ -50,11 +74,35 @@ export function WaypointEditor({ questId }) {
     }
   };
 
+  // Copy a scouted waypoint into the quest as a new quest waypoint
+  const handleAddScoutedToQuest = (scouted) => {
+    addWaypoint(questId, {
+      name: scouted.name,
+      description: scouted.notes || '',
+      notes: scouted.notes || '',
+      lat: scouted.lat,
+      lng: scouted.lng,
+      photo: scouted.photos?.[0] || null,
+    });
+    setShowSavedPanel(false);
+  };
+
+  const handleDeleteScouted = async (waypointId, e) => {
+    e.stopPropagation();
+    if (!window.confirm('Delete this scouted waypoint? This cannot be undone.')) return;
+    try {
+      await deleteScoutedWaypoint(waypointId);
+    } catch {
+      alert('Failed to delete waypoint');
+    }
+  };
+
   return (
     <div className="flex gap-6 h-[calc(100vh-220px)] min-h-[500px]">
+      {/* ── Map panel ────────────────────────────────────────────────── */}
       <div className="flex-1 relative">
         <Card className="h-full overflow-hidden">
-          <div 
+          <div
             ref={mapRef}
             className="w-full h-full relative cursor-crosshair"
             onClick={handleMapClick}
@@ -71,28 +119,28 @@ export function WaypointEditor({ questId }) {
               const isSelected = waypoint.id === selectedWaypointId;
               const x = ((waypoint.lng + 74.1) * 500) % 80 + 10;
               const y = ((waypoint.lat - 40.7) * 500) % 70 + 15;
-              
+
               return (
                 <button
                   key={waypoint.id}
-                  onClick={() => setSelectedWaypointId(waypoint.id)}
+                  onClick={() => {
+                    setSelectedWaypointId(waypoint.id);
+                    setShowSavedPanel(false);
+                  }}
                   className={`
                     absolute transform -translate-x-1/2 -translate-y-full
                     transition-all duration-200
                     ${isSelected ? 'scale-130 z-10' : 'hover:scale-110'}
                   `}
-                  style={{ 
-                    left: `${x}%`, 
-                    top: `${y}%`,
-                  }}
+                  style={{ left: `${x}%`, top: `${y}%` }}
                 >
                   <div className="relative">
-                    <MapPin 
+                    <MapPin
                       className={`w-8 h-8 ${isSelected ? 'text-neon-green' : 'text-cyan'}`}
                       fill={isSelected ? '#39ff14' : '#00d4ff'}
                       fillOpacity={0.3}
                     />
-                    <span 
+                    <span
                       className={`
                         absolute -bottom-5 left-1/2 -translate-x-1/2
                         font-bangers text-xs whitespace-nowrap
@@ -106,22 +154,32 @@ export function WaypointEditor({ questId }) {
               );
             })}
 
-            <Button
-              variant="cyan"
-              size="sm"
-              className="absolute bottom-4 right-4 z-20"
-              onClick={handleAddWaypoint}
-            >
-              <Plus className="w-4 h-4" />
-              Add Pin
-            </Button>
+            <div className="absolute bottom-4 right-4 z-20 flex gap-2">
+              <Button variant="cyan" size="sm" onClick={handleAddWaypoint}>
+                <Plus className="w-4 h-4" />
+                Add Pin
+              </Button>
+              <Button
+                variant={showSavedPanel ? 'yellow' : 'yellow-outline'}
+                size="sm"
+                onClick={() => {
+                  setShowSavedPanel(!showSavedPanel);
+                  if (!showSavedPanel) setSelectedWaypointId(null);
+                }}
+              >
+                <Bookmark className="w-4 h-4" />
+                Saved Waypoints
+              </Button>
+            </div>
 
-            {quest.waypoints.length === 0 && (
+            {quest.waypoints.length === 0 && !showSavedPanel && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="text-center">
                   <MapPin className="w-16 h-16 text-white/20 mx-auto mb-4" />
                   <p className="font-bangers text-white/70">No waypoints yet</p>
-                  <p className="text-sm text-white/50">Click "Add Pin" to create your first location</p>
+                  <p className="text-sm text-white/50">
+                    Click "Add Pin" or use "Saved Waypoints" from scouting
+                  </p>
                 </div>
               </div>
             )}
@@ -129,10 +187,201 @@ export function WaypointEditor({ questId }) {
         </Card>
       </div>
 
-      <div className="w-72">
-        <Card className="h-full">
-          {selectedWaypoint ? (
-            <div className="p-4 space-y-4">
+      {/* ── Right sidebar ────────────────────────────────────────────── */}
+      <div className={showSavedPanel ? 'w-96' : 'w-72'}>
+        <Card className="h-full overflow-hidden flex flex-col">
+          {showSavedPanel ? (
+            /* ── Saved Waypoints panel ─────────────────────────────── */
+            <>
+              <div className="p-4 border-b border-panel-border flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Bookmark className="w-5 h-5 text-yellow" />
+                  <h3 className="font-bangers text-lg text-white">Saved Waypoints</h3>
+                  <Badge variant="yellow">{scoutedWaypoints.length}</Badge>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => setShowSavedPanel(false)}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                {!scoutedWaypointsLoaded && (
+                  <div className="text-center py-8">
+                    <p className="text-sm text-white/50">Loading...</p>
+                  </div>
+                )}
+
+                {scoutedWaypointsLoaded && scoutedWaypoints.length === 0 && (
+                  <div className="text-center py-8">
+                    <Bookmark className="w-10 h-10 text-white/20 mx-auto mb-3" />
+                    <p className="font-bangers text-white/70">No saved waypoints</p>
+                    <p className="text-xs text-white/50 mt-1">
+                      Use Scout Mode in the mobile app to save locations
+                    </p>
+                  </div>
+                )}
+
+                {scoutedWaypoints.map((sw) => {
+                  const isExpanded = expandedScoutId === sw.id;
+                  const photoCount = sw.photos?.length || 0;
+                  const videoCount = sw.videos?.length || 0;
+                  const audioCount = sw.audioRecordings?.length || 0;
+                  const hasMedia = photoCount + videoCount + audioCount > 0;
+
+                  return (
+                    <Card
+                      key={sw.id}
+                      className={`transition-all ${isExpanded ? 'border-yellow/50' : ''}`}
+                    >
+                      {/* Header — always visible */}
+                      <button
+                        onClick={() => setExpandedScoutId(isExpanded ? null : sw.id)}
+                        className="w-full p-3 text-left flex items-start gap-3"
+                      >
+                        {sw.photos?.[0] ? (
+                          <img
+                            src={sw.photos[0]}
+                            alt={sw.name}
+                            className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-lg bg-input-bg flex items-center justify-center flex-shrink-0">
+                            <MapPin className="w-5 h-5 text-white/30" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bangers text-sm text-white truncate">{sw.name}</p>
+                          <p className="text-xs text-white/50 mt-0.5">
+                            {sw.lat?.toFixed(4)}°, {sw.lng?.toFixed(4)}°
+                          </p>
+                          {hasMedia && (
+                            <div className="flex items-center gap-2 mt-1">
+                              {photoCount > 0 && (
+                                <span className="text-[10px] text-white/50 flex items-center gap-0.5">
+                                  <Camera className="w-3 h-3" /> {photoCount}
+                                </span>
+                              )}
+                              {videoCount > 0 && (
+                                <span className="text-[10px] text-white/50 flex items-center gap-0.5">
+                                  <Video className="w-3 h-3" /> {videoCount}
+                                </span>
+                              )}
+                              {audioCount > 0 && (
+                                <span className="text-[10px] text-white/50 flex items-center gap-0.5">
+                                  <FileAudio className="w-3 h-3" /> {audioCount}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        <ChevronRight
+                          className={`w-4 h-4 text-white/30 flex-shrink-0 transition-transform ${
+                            isExpanded ? 'rotate-90' : ''
+                          }`}
+                        />
+                      </button>
+
+                      {/* Expanded content */}
+                      {isExpanded && (
+                        <div className="px-3 pb-3 space-y-3">
+                          {sw.notes && (
+                            <p className="text-xs text-white/70 leading-relaxed bg-input-bg rounded-md p-2">
+                              {sw.notes}
+                            </p>
+                          )}
+
+                          {/* Photo previews */}
+                          {photoCount > 0 && (
+                            <div>
+                              <p className="font-bangers text-[10px] uppercase text-white/50 mb-1.5">
+                                Photos
+                              </p>
+                              <div className="flex gap-2 overflow-x-auto">
+                                {sw.photos.map((url, i) => (
+                                  <img
+                                    key={i}
+                                    src={url}
+                                    alt={`${sw.name} photo ${i + 1}`}
+                                    className="w-20 h-20 rounded-lg object-cover flex-shrink-0 cursor-pointer border border-panel-border hover:border-cyan transition-colors"
+                                    onClick={() => setMediaPreview({ type: 'image', url })}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Video previews */}
+                          {videoCount > 0 && (
+                            <div>
+                              <p className="font-bangers text-[10px] uppercase text-white/50 mb-1.5">
+                                Videos
+                              </p>
+                              <div className="flex gap-2 overflow-x-auto">
+                                {sw.videos.map((url, i) => (
+                                  <button
+                                    key={i}
+                                    onClick={() => setMediaPreview({ type: 'video', url })}
+                                    className="w-20 h-20 rounded-lg bg-input-bg flex items-center justify-center flex-shrink-0 border border-panel-border hover:border-purple transition-colors"
+                                  >
+                                    <Play className="w-6 h-6 text-purple" />
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Audio previews */}
+                          {audioCount > 0 && (
+                            <div>
+                              <p className="font-bangers text-[10px] uppercase text-white/50 mb-1.5">
+                                Audio
+                              </p>
+                              <div className="space-y-1.5">
+                                {sw.audioRecordings.map((url, i) => (
+                                  <audio
+                                    key={i}
+                                    src={url}
+                                    controls
+                                    className="w-full h-8"
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <p className="text-[10px] text-white/40">
+                            Scouted {new Date(sw.createdAt).toLocaleDateString()}
+                          </p>
+
+                          {/* Action buttons */}
+                          <div className="flex gap-2">
+                            <Button
+                              variant="green"
+                              size="sm"
+                              className="flex-1"
+                              onClick={() => handleAddScoutedToQuest(sw)}
+                            >
+                              <PlusCircle className="w-3 h-3" />
+                              Add to Quest
+                            </Button>
+                            <Button
+                              variant="danger-outline"
+                              size="sm"
+                              onClick={(e) => handleDeleteScouted(sw.id, e)}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </Card>
+                  );
+                })}
+              </div>
+            </>
+          ) : selectedWaypoint ? (
+            /* ── Edit waypoint panel ───────────────────────────────── */
+            <div className="p-4 space-y-4 overflow-y-auto">
               <div className="flex items-center gap-2 mb-4">
                 <MapPin className="w-5 h-5 text-neon-green" />
                 <h3 className="font-bangers text-lg text-white">Edit Waypoint</h3>
@@ -189,6 +438,7 @@ export function WaypointEditor({ questId }) {
               </Button>
             </div>
           ) : (
+            /* ── Empty state ───────────────────────────────────────── */
             <div className="h-full flex items-center justify-center p-4">
               <div className="text-center">
                 <MapPin className="w-12 h-12 text-white/20 mx-auto mb-3" />
@@ -199,6 +449,37 @@ export function WaypointEditor({ questId }) {
           )}
         </Card>
       </div>
+
+      {/* ── Media preview overlay ────────────────────────────────────── */}
+      {mediaPreview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-navy-deep/90 backdrop-blur-sm"
+          onClick={() => setMediaPreview(null)}
+        >
+          <div className="relative max-w-3xl max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setMediaPreview(null)}
+              className="absolute -top-3 -right-3 z-10 w-8 h-8 rounded-full bg-panel border border-panel-border flex items-center justify-center hover:bg-red-500/20 transition-colors"
+            >
+              <X className="w-4 h-4 text-white" />
+            </button>
+            {mediaPreview.type === 'image' ? (
+              <img
+                src={mediaPreview.url}
+                alt="Preview"
+                className="max-w-full max-h-[80vh] rounded-lg border border-panel-border"
+              />
+            ) : (
+              <video
+                src={mediaPreview.url}
+                controls
+                autoPlay
+                className="max-w-full max-h-[80vh] rounded-lg border border-panel-border"
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

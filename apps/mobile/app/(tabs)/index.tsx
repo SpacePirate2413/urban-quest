@@ -1,10 +1,11 @@
-import { CATEGORIES, MOCK_QUESTS } from '@/src/data/mockData';
+import { CATEGORIES } from '@/src/data/mockData';
 import { useQuestStore } from '@/src/store';
 import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
 import { Difficulty, FilterOptions, Quest } from '@/src/types';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
+    ActivityIndicator,
     FlatList,
     Image,
     Modal,
@@ -198,25 +199,18 @@ function FilterModal({ visible, onClose, filters, onFilterChange }: { visible: b
 }
 
 export default function PlayScreen() {
-  const { viewMode, setViewMode, filters, setFilters, quests, loadQuests, selectQuest } = useQuestStore();
+  const { viewMode, setViewMode, filters, setFilters, quests, loadQuests, selectQuest, isLoading } = useQuestStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
-    loadQuests().then(() => {
-      // If API returned no quests, fall back to mocks
-      const current = useQuestStore.getState().quests;
-      if (!current || current.length === 0) {
-        useQuestStore.getState().setQuests(MOCK_QUESTS);
-      }
-    });
+    loadQuests().catch(() => setLoadError(true));
   }, []);
 
   const activeFiltersCount = [filters.priceRange, filters.difficulty, filters.category, filters.minRating].filter(Boolean).length;
 
-  const allQuests = quests.length > 0 ? quests : MOCK_QUESTS;
-
-  const filteredQuests = allQuests.filter((quest) => {
+  const filteredQuests = quests.filter((quest) => {
     if (searchQuery && !quest.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     if (filters.priceRange === 'free' && !quest.isFree) return false;
     if (filters.priceRange === 'under5' && quest.price >= 5) return false;
@@ -251,10 +245,49 @@ export default function PlayScreen() {
         </TouchableOpacity>
       </View>
 
-      {viewMode === 'map' ? (
-        <MapView 
-          quests={filteredQuests} 
-          onQuestPress={handleQuestPress} 
+      {isLoading ? (
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="large" color={Colors.cyan} />
+          <Text style={[Typography.body, { color: Colors.textSecondary, marginTop: Spacing.md }]}>
+            Loading quests...
+          </Text>
+        </View>
+      ) : loadError ? (
+        <View style={styles.emptyState}>
+          <Text style={{ fontSize: 40 }}>⚠️</Text>
+          <Text style={[Typography.headerMedium, { marginTop: Spacing.md }]}>Could Not Load Quests</Text>
+          <Text style={[Typography.body, { color: Colors.textSecondary, marginTop: Spacing.sm, textAlign: 'center' }]}>
+            Check your connection and try again.
+          </Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => { setLoadError(false); loadQuests().catch(() => setLoadError(true)); }}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : filteredQuests.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={{ fontSize: 40 }}>🔍</Text>
+          <Text style={[Typography.headerMedium, { marginTop: Spacing.md }]}>No Quests Available</Text>
+          <Text style={[Typography.body, { color: Colors.textSecondary, marginTop: Spacing.sm, textAlign: 'center' }]}>
+            {quests.length === 0
+              ? 'No quests have been published yet. Check back soon!'
+              : 'No quests match your filters. Try adjusting them.'}
+          </Text>
+          {activeFiltersCount > 0 && (
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={() => setFilters({})}
+            >
+              <Text style={styles.retryButtonText}>Clear Filters</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : viewMode === 'map' ? (
+        <MapView
+          quests={filteredQuests}
+          onQuestPress={handleQuestPress}
           onFilterPress={() => setShowFilters(true)}
           activeFiltersCount={activeFiltersCount}
         />
@@ -359,4 +392,7 @@ const styles = StyleSheet.create({
   clearButtonText: { color: Colors.hotPink, fontWeight: '700', fontSize: 16, textTransform: 'uppercase', letterSpacing: 1 },
   applyButton: { flex: 2, backgroundColor: Colors.cyan, padding: Spacing.md, borderRadius: 8, alignItems: 'center', borderWidth: 2, borderColor: Colors.cyan },
   applyButtonText: { color: Colors.primaryBackground, fontWeight: '700', fontSize: 16, textTransform: 'uppercase', letterSpacing: 1 },
+  emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.lg },
+  retryButton: { marginTop: Spacing.lg, backgroundColor: Colors.cyan, paddingHorizontal: Spacing.xl, paddingVertical: Spacing.md, borderRadius: 8 },
+  retryButtonText: { color: Colors.primaryBackground, fontWeight: '700', fontSize: 16, textTransform: 'uppercase', letterSpacing: 1 },
 });

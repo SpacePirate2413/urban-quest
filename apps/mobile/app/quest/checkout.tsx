@@ -1,36 +1,112 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
 import { useQuestStore } from '@/src/store';
-import { MOCK_QUESTS } from '@/src/data/mockData';
-
-type PaymentMethod = 'card' | 'apple' | 'google';
+import { api } from '@/src/services/api';
+import { Quest } from '@/src/types';
 
 export default function CheckoutScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const quest = MOCK_QUESTS.find((q) => q.id === id) || MOCK_QUESTS[0];
-  const { purchaseQuest } = useQuestStore();
-  const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>('apple');
+  const { selectedQuest, quests, purchaseQuest } = useQuestStore();
+  const [quest, setQuest] = useState<Quest | null>(
+    quests.find((q) => q.id === id) || selectedQuest
+  );
+  const [isLoading, setIsLoading] = useState(!quest);
+  const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const handlePurchase = async () => {
-    setIsProcessing(true);
-    
-    // Simulate payment processing
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    
-    purchaseQuest(quest.id);
-    setIsProcessing(false);
-    
-    router.replace(`/quest/play?id=${quest.id}`);
-  };
+  useEffect(() => {
+    if (!quest && id) {
+      setIsLoading(true);
+      api.getQuest(id)
+        .then((data: any) => {
+          const q: Quest = {
+            id: data.id,
+            title: data.title,
+            tagline: data.description?.slice(0, 100) || '',
+            description: data.description || '',
+            authorId: data.author?.id || data.authorId || '',
+            authorUsername: data.author?.name || 'Unknown',
+            status: data.status,
+            coverImageUrl: data.coverImage || '',
+            estimatedDurationMinutes: data.estimatedDuration || 60,
+            estimatedDistanceMeters: data.totalDistance || 0,
+            difficulty: data.difficulty || 'Moderate',
+            price: data.price ?? 0,
+            isFree: (data.price ?? 0) === 0,
+            ageRating: data.ageRating || '4+',
+            category: data.genre || 'Adventure',
+            playerCount: data._count?.purchases || 0,
+            minPlayers: 1,
+            maxPlayers: 4,
+            averageRating: data.averageRating,
+            reviewCount: data._count?.reviews || 0,
+            createdAt: new Date(data.createdAt),
+            firstWaypointLocation: {
+              latitude: data.waypoints?.[0]?.lat || 0,
+              longitude: data.waypoints?.[0]?.lng || 0,
+            },
+            characters: [],
+            waypoints: [],
+            reviews: [],
+          };
+          setQuest(q);
+          setIsLoading(false);
+        })
+        .catch((err: any) => {
+          setError(err.message || 'Failed to load quest');
+          setIsLoading(false);
+        });
+    }
+  }, [id]);
 
-  const paymentMethods = [
-    { id: 'apple' as PaymentMethod, icon: '🍎', label: 'Apple Pay' },
-    { id: 'google' as PaymentMethod, icon: 'G', label: 'Google Pay' },
-    { id: 'card' as PaymentMethod, icon: '💳', label: 'Credit Card' },
-  ];
+  if (isLoading) {
+    return (
+      <View style={[AppStyles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={Colors.cyan} />
+        <Text style={[Typography.body, { color: Colors.textSecondary, marginTop: Spacing.md }]}>
+          Loading checkout...
+        </Text>
+      </View>
+    );
+  }
+
+  if (error || !quest) {
+    return (
+      <View style={[AppStyles.container, styles.centered]}>
+        <Text style={{ fontSize: 40 }}>❌</Text>
+        <Text style={[Typography.headerMedium, { marginTop: Spacing.md }]}>Quest Not Found</Text>
+        <Text style={[Typography.body, { color: Colors.textSecondary, marginTop: Spacing.sm, textAlign: 'center' }]}>
+          {error || 'Could not load quest details.'}
+        </Text>
+        <TouchableOpacity style={styles.retryButton} onPress={() => router.back()}>
+          <Text style={styles.retryButtonText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const handlePurchase = async () => {
+    if (!quest.isFree) {
+      Alert.alert(
+        'Payment Coming Soon',
+        'Paid quest purchases are not yet available. Only free quests can be started at this time.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      await purchaseQuest(quest.id);
+      router.replace(`/quest/play?id=${quest.id}`);
+    } catch (err) {
+      Alert.alert('Error', 'Failed to start quest. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   return (
     <View style={AppStyles.container}>
@@ -43,7 +119,13 @@ export default function CheckoutScreen() {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.questSummary}>
-          <Image source={{ uri: quest.coverImageUrl }} style={styles.questImage} />
+          {quest.coverImageUrl ? (
+            <Image source={{ uri: quest.coverImageUrl }} style={styles.questImage} />
+          ) : (
+            <View style={[styles.questImage, { backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center' }]}>
+              <Text style={{ fontSize: 30 }}>🎮</Text>
+            </View>
+          )}
           <View style={styles.questInfo}>
             <Text style={Typography.headerMedium}>{quest.title}</Text>
             <Text style={[Typography.caption, { color: Colors.textSecondary }]}>
@@ -54,50 +136,6 @@ export default function CheckoutScreen() {
             </Text>
           </View>
         </View>
-
-        <View style={styles.section}>
-          <Text style={Typography.headerMedium}>Payment Method</Text>
-          <View style={styles.paymentMethods}>
-            {paymentMethods.map((method) => (
-              <TouchableOpacity
-                key={method.id}
-                style={[
-                  styles.paymentOption,
-                  selectedPayment === method.id && styles.paymentOptionSelected,
-                ]}
-                onPress={() => setSelectedPayment(method.id)}
-              >
-                <Text style={styles.paymentIcon}>{method.icon}</Text>
-                <Text style={styles.paymentLabel}>{method.label}</Text>
-                {selectedPayment === method.id && (
-                  <Text style={styles.checkmark}>✓</Text>
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {selectedPayment === 'card' && (
-          <View style={styles.section}>
-            <Text style={Typography.headerMedium}>Card Details</Text>
-            <View style={styles.cardForm}>
-              <View style={styles.cardInput}>
-                <Text style={styles.cardInputLabel}>Card Number</Text>
-                <Text style={styles.cardInputPlaceholder}>•••• •••• •••• 4242</Text>
-              </View>
-              <View style={styles.cardRow}>
-                <View style={[styles.cardInput, { flex: 1 }]}>
-                  <Text style={styles.cardInputLabel}>Expiry</Text>
-                  <Text style={styles.cardInputPlaceholder}>12/25</Text>
-                </View>
-                <View style={[styles.cardInput, { flex: 1, marginLeft: Spacing.md }]}>
-                  <Text style={styles.cardInputLabel}>CVC</Text>
-                  <Text style={styles.cardInputPlaceholder}>•••</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        )}
 
         <View style={styles.section}>
           <Text style={Typography.headerMedium}>Order Summary</Text>
@@ -115,6 +153,13 @@ export default function CheckoutScreen() {
                 </Text>
               </View>
             )}
+            {!quest.isFree && (
+              <View style={styles.summaryRow}>
+                <Text style={[Typography.caption, { color: Colors.textSecondary }]}>
+                  Payment integration coming soon
+                </Text>
+              </View>
+            )}
             <View style={[styles.summaryRow, styles.totalRow]}>
               <Text style={[Typography.headerMedium, { color: Colors.textPrimary }]}>Total</Text>
               <Text style={[Typography.headerMedium, { color: Colors.accentYellow }]}>
@@ -126,7 +171,7 @@ export default function CheckoutScreen() {
 
         <View style={styles.termsSection}>
           <Text style={[Typography.caption, { color: Colors.textSecondary, textAlign: 'center' }]}>
-            By completing this purchase, you agree to our Terms of Service. 
+            By completing this purchase, you agree to our Terms of Service.
             Your access expires 30 days after purchase.
           </Text>
         </View>
@@ -134,7 +179,7 @@ export default function CheckoutScreen() {
 
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.purchaseButton, isProcessing && styles.purchaseButtonDisabled]}
+          style={[styles.purchaseButton, (isProcessing || !quest.isFree) && styles.purchaseButtonDisabled]}
           onPress={handlePurchase}
           disabled={isProcessing}
         >
@@ -152,6 +197,11 @@ export default function CheckoutScreen() {
 }
 
 const styles = StyleSheet.create({
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.lg,
+  },
   header: {
     padding: Spacing.lg,
     paddingTop: 60,
@@ -186,59 +236,6 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: Spacing.lg,
-  },
-  paymentMethods: {
-    marginTop: Spacing.md,
-    gap: Spacing.sm,
-  },
-  paymentOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    padding: Spacing.md,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: Colors.border,
-  },
-  paymentOptionSelected: {
-    borderColor: Colors.accentYellow,
-  },
-  paymentIcon: {
-    fontSize: 24,
-    marginRight: Spacing.md,
-  },
-  paymentLabel: {
-    flex: 1,
-    color: Colors.textPrimary,
-    fontSize: 16,
-  },
-  checkmark: {
-    color: Colors.accentYellow,
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  cardForm: {
-    marginTop: Spacing.md,
-  },
-  cardInput: {
-    backgroundColor: Colors.surface,
-    padding: Spacing.md,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: Colors.border,
-    marginBottom: Spacing.sm,
-  },
-  cardInputLabel: {
-    color: Colors.textSecondary,
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  cardInputPlaceholder: {
-    color: Colors.textPrimary,
-    fontSize: 16,
-  },
-  cardRow: {
-    flexDirection: 'row',
   },
   orderSummary: {
     backgroundColor: Colors.surface,
@@ -282,5 +279,17 @@ const styles = StyleSheet.create({
     color: Colors.primaryBackground,
     fontWeight: '700',
     fontSize: 18,
+  },
+  retryButton: {
+    marginTop: Spacing.lg,
+    backgroundColor: Colors.cyan,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: Colors.primaryBackground,
+    fontWeight: '700',
+    fontSize: 16,
   },
 });

@@ -1,12 +1,11 @@
-import { ArrowLeft, Film, Headphones, MapPin, Settings, Star } from 'lucide-react';
+import { ArrowLeft, Film, MapPin, Settings, Star } from 'lucide-react';
 import { useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui';
 import { useWriterStore } from '../../store/useWriterStore';
-import { AudioStudio } from './AudioStudio';
+import { CreateTab } from './CreateTab';
 import { QuestReviews } from './QuestReviews';
 import { QuestSettings } from './QuestSettings';
-import { ScreenplayEditor } from './ScreenplayEditor';
 import { WaypointEditor } from './WaypointEditor';
 
 export function QuestEditor() {
@@ -47,20 +46,17 @@ export function QuestEditor() {
         </div>
       </div>
 
-      <Tabs defaultValue="waypoints" className="flex-1 flex flex-col overflow-hidden">
+      <Tabs defaultValue="settings" className="flex-1 flex flex-col overflow-hidden">
         <div className="px-6 py-3 border-b border-panel-border">
           <TabsList>
+            <TabsTrigger value="settings" icon={<Settings className="w-4 h-4" />}>
+              Quest Info
+            </TabsTrigger>
             <TabsTrigger value="waypoints" icon={<MapPin className="w-4 h-4" />}>
               Waypoints
             </TabsTrigger>
-            <TabsTrigger value="story" icon={<Film className="w-4 h-4" />}>
-              Story
-            </TabsTrigger>
-            <TabsTrigger value="media" icon={<Headphones className="w-4 h-4" />}>
-              Media
-            </TabsTrigger>
-            <TabsTrigger value="settings" icon={<Settings className="w-4 h-4" />}>
-              Quest Details
+            <TabsTrigger value="create" icon={<Film className="w-4 h-4" />}>
+              Create
             </TabsTrigger>
             <TabsTrigger value="reviews" icon={<Star className="w-4 h-4" />}>
               Reviews
@@ -69,22 +65,18 @@ export function QuestEditor() {
         </div>
 
         <div className="flex-1 overflow-hidden p-6">
-          <TabsContent value="waypoints" className="h-full">
-            <WaypointEditor questId={quest.id} />
-          </TabsContent>
-          
-          <TabsContent value="story" className="h-full">
-            <ScreenplayEditor questId={quest.id} />
-          </TabsContent>
-          
-          <TabsContent value="media" className="h-full">
-            <AudioStudio questId={quest.id} />
-          </TabsContent>
-          
           <TabsContent value="settings" className="h-full overflow-y-auto">
             <QuestSettings questId={quest.id} />
           </TabsContent>
-          
+
+          <TabsContent value="waypoints" className="h-full">
+            <WaypointEditor questId={quest.id} />
+          </TabsContent>
+
+          <TabsContent value="create" className="h-full">
+            <CreateTab questId={quest.id} />
+          </TabsContent>
+
           <TabsContent value="reviews" className="h-full overflow-y-auto">
             <QuestReviews questId={quest.id} />
           </TabsContent>

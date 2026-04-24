@@ -11,7 +11,7 @@ export function TopBar() {
         <h1 className="font-bangers text-2xl bg-gradient-to-r from-cyan to-neon-green bg-clip-text text-transparent">
           Urban Quest
         </h1>
-        <Badge variant="pink-solid">Writer Studio</Badge>
+        <Badge variant="pink-solid">Creator Station</Badge>
       </div>
       
       <div className="flex items-center gap-3">

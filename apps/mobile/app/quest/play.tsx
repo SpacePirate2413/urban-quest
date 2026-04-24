@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, Linking, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, Linking, Alert, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
 import { usePlaybackStore, useQuestStore } from '@/src/store';
-import { MOCK_QUESTS } from '@/src/data/mockData';
-import { Waypoint, Scene, Question, Choice } from '@/src/types';
+import { api } from '@/src/services/api';
+import { Quest, QuestStatus, Waypoint, Scene, Question, Choice } from '@/src/types';
 
 function NavigationView({ waypoint, onArrived }: { waypoint: Waypoint; onArrived: () => void }) {
   const [distance, setDistance] = useState(150);
@@ -186,9 +186,13 @@ function QuestionView({ question, onAnswer }: { question: Question; onAnswer: (c
   );
 }
 
-function CompletionScreen({ quest, onShare, onReview }: { quest: any; onShare: () => void; onReview: () => void }) {
+function CompletionScreen({ quest, onShare, onReview, startedAt }: { quest: any; onShare: () => void; onReview: () => void; startedAt: Date }) {
   const [rating, setRating] = useState(0);
   const [reviewText, setReviewText] = useState('');
+
+  const elapsedMs = Date.now() - startedAt.getTime();
+  const elapsedMinutes = Math.round(elapsedMs / 60000);
+  const elapsedDisplay = elapsedMinutes < 1 ? '< 1 min' : `${elapsedMinutes} min`;
 
   return (
     <ScrollView style={styles.completionScreen} contentContainerStyle={styles.completionContent}>
@@ -212,7 +216,7 @@ function CompletionScreen({ quest, onShare, onReview }: { quest: any; onShare: (
         </View>
         <View style={styles.statRow}>
           <Text style={Typography.body}>Time Taken</Text>
-          <Text style={[Typography.body, { color: Colors.accentYellow }]}>32 min</Text>
+          <Text style={[Typography.body, { color: Colors.accentYellow }]}>{elapsedDisplay}</Text>
         </View>
       </View>
 
@@ -241,12 +245,127 @@ function CompletionScreen({ quest, onShare, onReview }: { quest: any; onShare: (
 
 export default function PlayScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const quest = MOCK_QUESTS.find((q) => q.id === id) || MOCK_QUESTS[0];
-  
+  const { quests, selectedQuest } = useQuestStore();
+
+  const storeQuest = quests.find((q) => q.id === id) || selectedQuest;
+  const [quest, setQuest] = useState<Quest | null>(storeQuest);
+  const [isLoading, setIsLoading] = useState(!storeQuest);
+  const [error, setError] = useState<string | null>(null);
+
   const [currentWaypointIndex, setCurrentWaypointIndex] = useState(0);
   const [phase, setPhase] = useState<'navigate' | 'scene' | 'question' | 'complete'>('navigate');
   const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [startedAt] = useState(new Date());
+
+  useEffect(() => {
+    if (!quest && id) {
+      setIsLoading(true);
+      api.getQuest(id)
+        .then((data: any) => {
+          const q: Quest = {
+            id: data.id,
+            title: data.title,
+            tagline: data.description?.slice(0, 100) || '',
+            description: data.description || '',
+            authorId: data.author?.id || data.authorId || '',
+            authorUsername: data.author?.name || 'Unknown',
+            status: QuestStatus.PUBLISHED,
+            coverImageUrl: data.coverImage || '',
+            estimatedDurationMinutes: data.estimatedDuration || 60,
+            estimatedDistanceMeters: data.totalDistance || 0,
+            difficulty: data.difficulty || 'Moderate',
+            price: data.price ?? 0,
+            isFree: (data.price ?? 0) === 0,
+            ageRating: data.ageRating || '4+',
+            category: data.genre || 'Adventure',
+            playerCount: data._count?.purchases || 0,
+            minPlayers: 1,
+            maxPlayers: 4,
+            averageRating: data.averageRating,
+            reviewCount: data._count?.reviews || 0,
+            createdAt: new Date(data.createdAt),
+            firstWaypointLocation: {
+              latitude: data.waypoints?.[0]?.lat || 0,
+              longitude: data.waypoints?.[0]?.lng || 0,
+            },
+            characters: [],
+            waypoints: (data.waypoints || []).map((wp: any, i: number) => ({
+              id: wp.id,
+              questId: data.id,
+              title: wp.name || `Waypoint ${i + 1}`,
+              description: wp.description || '',
+              order: i + 1,
+              location: { latitude: wp.lat || 0, longitude: wp.lng || 0 },
+              radius: 15,
+              scenes: (wp.scenes || []).map((s: any) => ({
+                id: s.id,
+                waypointId: wp.id,
+                scriptText: s.script || s.scriptText || '',
+                speaker: s.speaker,
+                videoUrl: s.videoUrl,
+                audioUrl: s.audioUrl,
+                questions: s.questions || [],
+              })),
+            })),
+            reviews: [],
+          };
+          setQuest(q);
+          setIsLoading(false);
+        })
+        .catch((err: any) => {
+          setError(err.message || 'Failed to load quest');
+          setIsLoading(false);
+        });
+    }
+  }, [id]);
+
+  if (isLoading) {
+    return (
+      <View style={[AppStyles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={Colors.cyan} />
+        <Text style={[Typography.body, { color: Colors.textSecondary, marginTop: Spacing.md }]}>
+          Loading quest...
+        </Text>
+      </View>
+    );
+  }
+
+  if (error || !quest) {
+    return (
+      <View style={[AppStyles.container, { justifyContent: 'center', alignItems: 'center', padding: Spacing.lg }]}>
+        <Text style={{ fontSize: 40 }}>❌</Text>
+        <Text style={[Typography.headerMedium, { marginTop: Spacing.md }]}>Quest Not Found</Text>
+        <Text style={[Typography.body, { color: Colors.textSecondary, marginTop: Spacing.sm, textAlign: 'center' }]}>
+          {error || 'Could not load this quest.'}
+        </Text>
+        <TouchableOpacity
+          style={{ marginTop: Spacing.lg, backgroundColor: Colors.cyan, paddingHorizontal: Spacing.xl, paddingVertical: Spacing.md, borderRadius: 8 }}
+          onPress={() => router.replace('/(tabs)')}
+        >
+          <Text style={{ color: Colors.primaryBackground, fontWeight: '700', fontSize: 16 }}>Return to Home</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (quest.waypoints.length === 0) {
+    return (
+      <View style={[AppStyles.container, { justifyContent: 'center', alignItems: 'center', padding: Spacing.lg }]}>
+        <Text style={{ fontSize: 40 }}>🚧</Text>
+        <Text style={[Typography.headerMedium, { marginTop: Spacing.md }]}>Quest Has No Waypoints</Text>
+        <Text style={[Typography.body, { color: Colors.textSecondary, marginTop: Spacing.sm, textAlign: 'center' }]}>
+          This quest doesn't have any waypoints yet.
+        </Text>
+        <TouchableOpacity
+          style={{ marginTop: Spacing.lg, backgroundColor: Colors.cyan, paddingHorizontal: Spacing.xl, paddingVertical: Spacing.md, borderRadius: 8 }}
+          onPress={() => router.replace('/(tabs)')}
+        >
+          <Text style={{ color: Colors.primaryBackground, fontWeight: '700', fontSize: 16 }}>Return to Home</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   const currentWaypoint = quest.waypoints[currentWaypointIndex];
   const currentScene = currentWaypoint?.scenes?.[currentSceneIndex];
@@ -276,12 +395,20 @@ export default function PlayScreen() {
 
   const moveToNextWaypoint = () => {
     if (currentWaypointIndex < quest.waypoints.length - 1) {
-      setCurrentWaypointIndex(currentWaypointIndex + 1);
+      const nextIndex = currentWaypointIndex + 1;
+      setCurrentWaypointIndex(nextIndex);
       setCurrentSceneIndex(0);
       setCurrentQuestionIndex(0);
       setPhase('navigate');
+      // Report progress to API
+      const nextScene = quest.waypoints[nextIndex]?.scenes?.[0];
+      if (nextScene) {
+        api.updateProgress(quest.id, { currentSceneId: nextScene.id }).catch(() => {});
+      }
     } else {
       setPhase('complete');
+      // Report completion to API
+      api.updateProgress(quest.id, { completed: true }).catch(() => {});
     }
   };
 
@@ -294,7 +421,7 @@ export default function PlayScreen() {
   };
 
   if (phase === 'complete') {
-    return <CompletionScreen quest={quest} onShare={handleShare} onReview={handleReview} />;
+    return <CompletionScreen quest={quest} onShare={handleShare} onReview={handleReview} startedAt={startedAt} />;
   }
 
   return (

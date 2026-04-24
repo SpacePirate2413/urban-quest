@@ -1,14 +1,101 @@
-import { MOCK_QUESTS } from '@/src/data/mockData';
 import { useQuestStore } from '@/src/store';
 import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
 import { router, useLocalSearchParams } from 'expo-router';
-import React from 'react';
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { api } from '@/src/services/api';
+import { Quest, QuestStatus } from '@/src/types';
 
 export default function QuestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { quests, selectedQuest } = useQuestStore();
-  const quest = quests.find((q) => q.id === id) || selectedQuest || MOCK_QUESTS.find((q) => q.id === id) || MOCK_QUESTS[0];
+  const { quests, selectedQuest, selectQuest } = useQuestStore();
+
+  const storeQuest = quests.find((q) => q.id === id) || selectedQuest;
+  const [quest, setQuest] = useState<Quest | null>(storeQuest);
+  const [isLoading, setIsLoading] = useState(!storeQuest);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!quest && id) {
+      setIsLoading(true);
+      api.getQuest(id)
+        .then((data: any) => {
+          const q: Quest = {
+            id: data.id,
+            title: data.title,
+            tagline: data.description?.slice(0, 100) || '',
+            description: data.description || '',
+            authorId: data.author?.id || data.authorId || '',
+            authorUsername: data.author?.name || 'Unknown',
+            authorAvatarUrl: data.author?.avatarUrl,
+            status: QuestStatus.PUBLISHED,
+            coverImageUrl: data.coverImage || '',
+            estimatedDurationMinutes: data.estimatedDuration || 60,
+            estimatedDistanceMeters: data.totalDistance || 0,
+            difficulty: data.difficulty || 'Moderate',
+            price: data.price ?? 0,
+            isFree: (data.price ?? 0) === 0,
+            ageRating: data.ageRating || '4+',
+            category: data.genre || 'Adventure',
+            playerCount: data._count?.purchases || 0,
+            minPlayers: 1,
+            maxPlayers: 4,
+            averageRating: data.averageRating,
+            reviewCount: data._count?.reviews || 0,
+            createdAt: new Date(data.createdAt),
+            firstWaypointLocation: {
+              latitude: data.waypoints?.[0]?.lat || 0,
+              longitude: data.waypoints?.[0]?.lng || 0,
+            },
+            characters: [],
+            waypoints: (data.waypoints || []).map((wp: any, i: number) => ({
+              id: wp.id,
+              questId: data.id,
+              title: wp.name || `Waypoint ${i + 1}`,
+              description: wp.description || '',
+              order: i + 1,
+              location: { latitude: wp.lat || 0, longitude: wp.lng || 0 },
+              radius: 15,
+              scenes: [],
+            })),
+            reviews: [],
+          };
+          setQuest(q);
+          selectQuest(q);
+          setIsLoading(false);
+        })
+        .catch((err: any) => {
+          setError(err.message || 'Failed to load quest');
+          setIsLoading(false);
+        });
+    }
+  }, [id]);
+
+  if (isLoading) {
+    return (
+      <View style={[AppStyles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={Colors.cyan} />
+        <Text style={[Typography.body, { color: Colors.textSecondary, marginTop: Spacing.md }]}>
+          Loading quest...
+        </Text>
+      </View>
+    );
+  }
+
+  if (error || !quest) {
+    return (
+      <View style={[AppStyles.container, styles.centered]}>
+        <Text style={{ fontSize: 40 }}>❌</Text>
+        <Text style={[Typography.headerMedium, { marginTop: Spacing.md }]}>Quest Not Found</Text>
+        <Text style={[Typography.body, { color: Colors.textSecondary, marginTop: Spacing.sm, textAlign: 'center' }]}>
+          {error || 'This quest could not be loaded.'}
+        </Text>
+        <TouchableOpacity style={styles.errorButton} onPress={() => router.back()}>
+          <Text style={styles.errorButtonText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   const handlePurchase = () => {
     router.push(`/quest/checkout?id=${quest.id}`);
@@ -21,8 +108,14 @@ export default function QuestDetailScreen() {
   return (
     <View style={AppStyles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        <Image source={{ uri: quest.coverImageUrl }} style={styles.coverImage} />
-        
+        {quest.coverImageUrl ? (
+          <Image source={{ uri: quest.coverImageUrl }} style={styles.coverImage} />
+        ) : (
+          <View style={[styles.coverImage, { backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center' }]}>
+            <Text style={{ fontSize: 50 }}>🎮</Text>
+          </View>
+        )}
+
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Text style={styles.backButtonText}>←</Text>
         </TouchableOpacity>
@@ -44,15 +137,15 @@ export default function QuestDetailScreen() {
 
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{renderStars(quest.averageRating || 0)}</Text>
-              <Text style={styles.statLabel}>{quest.averageRating?.toFixed(1)} ({quest.reviewCount})</Text>
+              <Text style={styles.statValue}>{quest.averageRating ? renderStars(quest.averageRating) : 'New'}</Text>
+              <Text style={styles.statLabel}>{quest.averageRating?.toFixed(1) || 'No ratings'} ({quest.reviewCount})</Text>
             </View>
             <View style={styles.statItem}>
               <Text style={styles.statValue}>{quest.estimatedDurationMinutes}</Text>
               <Text style={styles.statLabel}>minutes</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{(quest.estimatedDistanceMeters / 1609).toFixed(1)}</Text>
+              <Text style={styles.statValue}>{quest.estimatedDistanceMeters > 0 ? (quest.estimatedDistanceMeters / 1609).toFixed(1) : '—'}</Text>
               <Text style={styles.statLabel}>miles</Text>
             </View>
           </View>
@@ -85,12 +178,6 @@ export default function QuestDetailScreen() {
                   {quest.estimatedDurationMinutes ? `${quest.estimatedDurationMinutes} min` : 'Not set'}
                 </Text>
               </View>
-              {quest.usesAI && (
-                <View style={styles.detailItem}>
-                  <Text style={styles.detailLabel}>Narration</Text>
-                  <Text style={[styles.detailValue, { color: Colors.accentCyan }]}>✨ AI Generated</Text>
-                </View>
-              )}
             </View>
           </View>
 
@@ -99,7 +186,9 @@ export default function QuestDetailScreen() {
             <View style={styles.mapPreview}>
               <Text style={{ fontSize: 30 }}>📍</Text>
               <Text style={[Typography.caption, { color: Colors.textSecondary, marginTop: Spacing.sm }]}>
-                {quest.firstWaypointLocation.latitude.toFixed(4)}°N, {Math.abs(quest.firstWaypointLocation.longitude).toFixed(4)}°W
+                {quest.firstWaypointLocation.latitude !== 0
+                  ? `${quest.firstWaypointLocation.latitude.toFixed(4)}°N, ${Math.abs(quest.firstWaypointLocation.longitude).toFixed(4)}°W`
+                  : 'Location not set'}
               </Text>
             </View>
           </View>
@@ -114,8 +203,14 @@ export default function QuestDetailScreen() {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.creatorCard} onPress={() => router.push(`/creator/${quest.authorId}`)}>
-            <Image source={{ uri: quest.authorAvatarUrl }} style={styles.creatorAvatar} />
+          <TouchableOpacity style={styles.creatorCard} onPress={() => router.push(`/creator/${quest.authorId}` as any)}>
+            {quest.authorAvatarUrl ? (
+              <Image source={{ uri: quest.authorAvatarUrl }} style={styles.creatorAvatar} />
+            ) : (
+              <View style={[styles.creatorAvatar, { backgroundColor: Colors.inputBg, justifyContent: 'center', alignItems: 'center' }]}>
+                <Text style={{ fontSize: 20 }}>👤</Text>
+              </View>
+            )}
             <View style={styles.creatorInfo}>
               <Text style={Typography.body}>Created by</Text>
               <Text style={[Typography.headerMedium, { color: Colors.accentYellow }]}>
@@ -133,13 +228,19 @@ export default function QuestDetailScreen() {
             {quest.reviews.slice(0, 2).map((review) => (
               <View key={review.id} style={styles.reviewCard}>
                 <View style={styles.reviewHeader}>
-                  <Image source={{ uri: review.avatarUrl }} style={styles.reviewerAvatar} />
+                  {review.avatarUrl ? (
+                    <Image source={{ uri: review.avatarUrl }} style={styles.reviewerAvatar} />
+                  ) : (
+                    <View style={[styles.reviewerAvatar, { backgroundColor: Colors.inputBg, justifyContent: 'center', alignItems: 'center' }]}>
+                      <Text style={{ fontSize: 14 }}>👤</Text>
+                    </View>
+                  )}
                   <View style={styles.reviewerInfo}>
                     <Text style={Typography.body}>{review.username}</Text>
                     <Text style={Typography.caption}>{renderStars(review.rating)}</Text>
                   </View>
                   <Text style={[Typography.caption, { color: Colors.textSecondary }]}>
-                    {review.createdAt.toLocaleDateString()}
+                    {new Date(review.createdAt).toLocaleDateString()}
                   </Text>
                 </View>
                 {review.text && (
@@ -176,6 +277,23 @@ export default function QuestDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.lg,
+  },
+  errorButton: {
+    marginTop: Spacing.lg,
+    backgroundColor: Colors.cyan,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: 8,
+  },
+  errorButtonText: {
+    color: Colors.primaryBackground,
+    fontWeight: '700',
+    fontSize: 16,
+  },
   coverImage: {
     width: '100%',
     height: 250,

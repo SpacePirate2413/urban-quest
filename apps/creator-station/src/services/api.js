@@ -178,6 +178,17 @@ class ApiClient {
     return response.json();
   }
 
+  // Scouted Waypoints
+  async getMyScoutedWaypoints() {
+    return this.request('/users/scouted-waypoints');
+  }
+
+  async deleteScoutedWaypoint(id) {
+    return this.request(`/users/scouted-waypoints/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Admin
   async getSubmissions(filters = {}) {
     const params = new URLSearchParams();

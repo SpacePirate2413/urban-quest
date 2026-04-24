@@ -16,172 +16,6 @@ export const GENRES = [
   'Thriller', 'Mystery', 'Adventure', 'Horror', 'Romance', 'Comedy', 'Sci-Fi', 'Fantasy'
 ];
 
-const mockQuests = [
-  {
-    id: 'quest-1',
-    title: 'The Midnight Heist',
-    description: 'A thrilling adventure through the city\'s underground as you plan the perfect heist.',
-    genre: 'Thriller',
-    price: 4.99,
-    status: 'published',
-    coverImage: null,
-    usesAI: true,
-    narratorVoiceId: 'narrator-male-deep',
-    sales: 127,
-    revenue: 209.55,
-    waypoints: [
-      { id: 'wp-1', name: 'The Abandoned Warehouse', description: 'An old warehouse on the docks, perfect for planning.', notes: 'Meet the crew here', photo: null, lat: 40.7128, lng: -74.0060 },
-      { id: 'wp-2', name: 'City Bank Tower', description: 'The target. 50 floors of security systems.', notes: 'Final destination', photo: null, lat: 40.7580, lng: -73.9855 },
-    ],
-    scenes: [
-      {
-        id: 'scene-1',
-        waypointId: 'wp-1',
-        script: `The warehouse smells of rust and old secrets. Shadows dance across the concrete floor as a single bulb flickers overhead.
-
-You lean over the blueprints spread across the makeshift table. The crew watches you, waiting for your lead.
-
-"Alright team, listen up. We've got one shot at this."
-
-The tech specialist looks up from her laptop. "Security feeds are looped. We have a 45-minute window."
-
-"That's all we need. Remember — no heroes, no improvising. We stick to the plan."`,
-        question: 'How do you want to approach the heist?',
-        choices: [
-          { text: 'Go in through the roof', waypointId: 'wp-2' },
-          { text: 'Use the underground tunnels', waypointId: 'wp-2' },
-          { text: 'Pose as maintenance workers', waypointId: 'wp-2' },
-        ],
-        audioTracks: [],
-        mediaFile: null,
-        mediaType: null,
-        mediaStatus: null,
-        submittedAt: null,
-      },
-    ],
-  },
-  {
-    id: 'quest-2',
-    title: 'Whispers in the Garden',
-    description: 'A romantic mystery set in a Victorian botanical garden.',
-    genre: 'Mystery',
-    price: 0,
-    status: 'draft',
-    coverImage: null,
-    usesAI: true,
-    narratorVoiceId: 'narrator-female-warm',
-    sales: 0,
-    revenue: 0,
-    waypoints: [
-      { id: 'wp-3', name: 'The Rose Pavilion', description: 'A beautiful gazebo surrounded by climbing roses.', notes: 'Opening scene', photo: null, lat: 40.7829, lng: -73.9654 },
-      { id: 'wp-4', name: 'The Greenhouse', description: 'Exotic plants from around the world.', notes: 'Discovery scene', photo: null, lat: 40.7831, lng: -73.9656 },
-    ],
-    scenes: [
-      {
-        id: 'scene-2',
-        waypointId: 'wp-3',
-        script: `Morning dew clings to the rose petals as sunlight filters through the lattice. The garden is quiet, save for the distant song of a mockingbird.
-
-An elderly woman tends to the roses with practiced hands. She doesn't look up as you approach, but somehow she knows you're there.
-
-"You're here about the letters, aren't you?"
-
-You stop in your tracks, surprised. "How did you know?"
-
-She sighs, setting down her pruning shears. "I've been waiting fifty years for someone to ask the right questions."`,
-        question: 'What do you ask her?',
-        choices: [
-          { text: 'Tell me about the letters', waypointId: 'wp-4' },
-          { text: 'Who wrote them?', waypointId: 'wp-4' },
-        ],
-        audioTracks: [],
-        mediaFile: null,
-        mediaType: null,
-        mediaStatus: 'pending',
-        submittedAt: '2026-03-19T14:30:00Z',
-      },
-    ],
-  },
-];
-
-const mockSubmissions = [
-  {
-    id: 'sub-1',
-    questId: 'quest-2',
-    questTitle: 'Whispers in the Garden',
-    sceneId: 'scene-2',
-    sceneIndex: 1,
-    writerId: 'writer-1',
-    writerName: 'Alex Writer',
-    writerEmail: 'alex@urbanquest.com',
-    mediaType: 'audio',
-    mediaUrl: null,
-    fileName: 'scene2_narration.mp3',
-    fileSize: '2.4 MB',
-    duration: '1:45',
-    status: 'pending',
-    submittedAt: '2026-03-19T14:30:00Z',
-    reviewedAt: null,
-    reviewNotes: null,
-  },
-  {
-    id: 'sub-2',
-    questId: 'quest-1',
-    questTitle: 'The Midnight Heist',
-    sceneId: 'scene-1',
-    sceneIndex: 1,
-    writerId: 'writer-2',
-    writerName: 'Jordan Blake',
-    writerEmail: 'jordan@urbanquest.com',
-    mediaType: 'video',
-    mediaUrl: null,
-    fileName: 'heist_intro.mp4',
-    fileSize: '18.7 MB',
-    duration: '2:30',
-    status: 'pending',
-    submittedAt: '2026-03-18T09:15:00Z',
-    reviewedAt: null,
-    reviewNotes: null,
-  },
-  {
-    id: 'sub-3',
-    questId: 'quest-1',
-    questTitle: 'The Midnight Heist',
-    sceneId: 'scene-1',
-    sceneIndex: 1,
-    writerId: 'writer-3',
-    writerName: 'Sam Chen',
-    writerEmail: 'sam@urbanquest.com',
-    mediaType: 'audio',
-    mediaUrl: null,
-    fileName: 'warehouse_audio.wav',
-    fileSize: '5.1 MB',
-    duration: '2:10',
-    status: 'approved',
-    submittedAt: '2026-03-15T11:20:00Z',
-    reviewedAt: '2026-03-16T08:00:00Z',
-    reviewNotes: 'Great narration quality!',
-  },
-  {
-    id: 'sub-4',
-    questId: 'quest-2',
-    questTitle: 'Whispers in the Garden',
-    sceneId: 'scene-2',
-    sceneIndex: 1,
-    writerId: 'writer-4',
-    writerName: 'Taylor Reed',
-    writerEmail: 'taylor@urbanquest.com',
-    mediaType: 'audio',
-    mediaUrl: null,
-    fileName: 'garden_scene.mp3',
-    fileSize: '1.8 MB',
-    duration: '1:20',
-    status: 'rejected',
-    submittedAt: '2026-03-14T16:45:00Z',
-    reviewedAt: '2026-03-15T10:30:00Z',
-    reviewNotes: 'Audio quality too low. Please re-record with better microphone.',
-  },
-];
 
 // Load persisted data from localStorage
 const loadPersistedState = () => {
@@ -190,14 +24,14 @@ const loadPersistedState = () => {
     if (saved) {
       const parsed = JSON.parse(saved);
       return {
-        submissions: parsed.submissions || mockSubmissions,
+        submissions: parsed.submissions || [],
         quests: parsed.quests || [],
       };
     }
   } catch (e) {
     console.warn('Failed to load persisted state:', e);
   }
-  return { submissions: mockSubmissions, quests: [] };
+  return { submissions: [], quests: [] };
 };
 
 const persistedState = loadPersistedState();
@@ -226,6 +60,39 @@ export const useWriterStore = create((set, get) => ({
   
   submissions: persistedState.submissions,
 
+  scoutedWaypoints: [],
+  scoutedWaypointsLoaded: false,
+
+  // Scouted Waypoints actions
+  loadScoutedWaypoints: async () => {
+    try {
+      const waypoints = await api.getMyScoutedWaypoints();
+      // Parse JSON string fields from the API
+      const parsed = waypoints.map(wp => ({
+        ...wp,
+        photos: wp.photos ? JSON.parse(wp.photos) : [],
+        videos: wp.videos ? JSON.parse(wp.videos) : [],
+        audioRecordings: wp.audioRecordings ? JSON.parse(wp.audioRecordings) : [],
+      }));
+      set({ scoutedWaypoints: parsed, scoutedWaypointsLoaded: true });
+    } catch (err) {
+      console.warn('Failed to load scouted waypoints:', err.message);
+      set({ scoutedWaypointsLoaded: true });
+    }
+  },
+
+  deleteScoutedWaypoint: async (waypointId) => {
+    try {
+      await api.deleteScoutedWaypoint(waypointId);
+      set((state) => ({
+        scoutedWaypoints: state.scoutedWaypoints.filter(wp => wp.id !== waypointId),
+      }));
+    } catch (err) {
+      console.error('Failed to delete scouted waypoint:', err);
+      throw err;
+    }
+  },
+
   // Auth actions
   login: async (email, name) => {
     set({ isLoading: true, error: null });
@@ -244,12 +111,12 @@ export const useWriterStore = create((set, get) => ({
         name: name || email.split('@')[0],
         role: 'writer',
       };
-      set({ 
-        writer: offlineUser, 
-        isAuthenticated: true, 
-        isLoading: false, 
+      set({
+        writer: offlineUser,
+        isAuthenticated: true,
+        isLoading: false,
         offlineMode: true,
-        quests: mockQuests,
+        quests: [],
       });
       return offlineUser;
     }

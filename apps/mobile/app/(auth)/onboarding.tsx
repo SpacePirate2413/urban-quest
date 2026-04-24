@@ -73,7 +73,6 @@ export default function OnboardingScreen() {
         avatarType: 'preset',
         role: UserRole.PLAYER,
         birthdate: new Date(parseInt(birthYear), parseInt(birthMonth) - 1, parseInt(birthDay)),
-        totalXP: 0,
         createdQuests: [],
         purchasedQuests: [],
         completedQuestsCount: 0,

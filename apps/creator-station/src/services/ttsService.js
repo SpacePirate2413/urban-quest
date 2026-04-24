@@ -1,3 +1,10 @@
+class TTSError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'TTSError';
+  }
+}
+
 class TTSService {
   constructor(baseUrl = 'http://localhost:4123') {
     this.baseUrl = baseUrl;
@@ -27,9 +34,9 @@ class TTSService {
 
       return await response.blob();
     } catch (error) {
-      console.warn('TTS API not available, using mock response:', error.message);
-      await this.simulateDelay(500, 1500);
-      return this.createMockAudioBlob();
+      throw new TTSError(
+        'Text-to-speech is not available. Record audio manually.'
+      );
     }
   }
 
@@ -69,7 +76,7 @@ class TTSService {
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      
+
       if (onProgress) {
         onProgress({
           current: i,
@@ -81,7 +88,7 @@ class TTSService {
 
       const blob = await this.generateSpeech(line.text, voiceId, line.options);
       const duration = this.estimateDuration(line.text);
-      
+
       results.push({
         lineIndex: i,
         voiceId,
@@ -102,41 +109,6 @@ class TTSService {
     }
 
     return results;
-  }
-
-  simulateDelay(min, max) {
-    const delay = Math.random() * (max - min) + min;
-    return new Promise((resolve) => setTimeout(resolve, delay));
-  }
-
-  createMockAudioBlob() {
-    const sampleRate = 22050;
-    const duration = 0.1;
-    const numSamples = Math.floor(sampleRate * duration);
-    const buffer = new ArrayBuffer(44 + numSamples * 2);
-    const view = new DataView(buffer);
-
-    const writeString = (offset, string) => {
-      for (let i = 0; i < string.length; i++) {
-        view.setUint8(offset + i, string.charCodeAt(i));
-      }
-    };
-
-    writeString(0, 'RIFF');
-    view.setUint32(4, 36 + numSamples * 2, true);
-    writeString(8, 'WAVE');
-    writeString(12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * 2, true);
-    view.setUint16(32, 2, true);
-    view.setUint16(34, 16, true);
-    writeString(36, 'data');
-    view.setUint32(40, numSamples * 2, true);
-
-    return new Blob([buffer], { type: 'audio/wav' });
   }
 
   estimateDuration(text) {

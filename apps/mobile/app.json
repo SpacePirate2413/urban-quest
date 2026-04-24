@@ -10,7 +10,12 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.urban-quest"
+      "bundleIdentifier": "com.anonymous.urban-quest",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Urban Quest needs camera access to take photos and videos for waypoint scouting.",
+        "NSMicrophoneUsageDescription": "Urban Quest needs microphone access to record audio notes for waypoint scouting.",
+        "NSPhotoLibraryUsageDescription": "Urban Quest needs photo library access to attach images and videos to waypoints."
+      }
     },
     "android": {
       "adaptiveIcon": {

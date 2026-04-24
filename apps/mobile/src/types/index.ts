@@ -31,8 +31,7 @@ export interface User {
   avatarUrl?: string;
   avatarType: 'custom' | 'preset' | 'google' | 'apple';
   role: UserRole;
-  birthdate: Date;
-  totalXP: number;
+  birthdate?: Date;
   createdQuests: string[];
   purchasedQuests: PurchasedQuest[];
   completedQuestsCount: number;
