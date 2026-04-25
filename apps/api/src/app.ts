@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import multipart from '@fastify/multipart';
 import staticPlugin from '@fastify/static';
+import websocket from '@fastify/websocket';
 import Fastify from 'fastify';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -12,6 +13,7 @@ import { purchaseRoutes } from './features/purchases/purchases.routes.js';
 import { questRoutes } from './features/quests/quests.routes.js';
 import { reviewRoutes } from './features/reviews/reviews.routes.js';
 import { usersRoutes } from './features/users/users.routes.js';
+import { registerClient } from './lib/ws.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -64,6 +66,22 @@ export async function buildApp() {
   await app.register(adminRoutes, { prefix: '/api/admin' });
 
   app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
+
+  // WebSocket endpoint for real-time notifications
+  await app.register(websocket);
+  app.get('/api/ws', { websocket: true }, (socket, request) => {
+    const token = (request.query as Record<string, string>).token;
+    if (!token) {
+      socket.close(4001, 'Missing token');
+      return;
+    }
+    try {
+      const decoded = app.jwt.verify<{ id: string }>(token);
+      registerClient(decoded.id, socket);
+    } catch {
+      socket.close(4001, 'Invalid token');
+    }
+  });
 
   return app;
 }

@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { CheckCircle, Rocket } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { TopBar } from './components/layout';
+import { Badge, Button, Modal } from './components/ui';
+import { useNotifications } from './hooks/useNotifications';
 import { AdminDashboard } from './pages/admin';
 import { CreatorProfile } from './pages/profile';
 import { QuestEditor, WriterDashboard } from './pages/write';
+import { api } from './services/api';
 import { useWriterStore } from './store/useWriterStore';
 
 // Fixed test user for development
@@ -110,7 +114,81 @@ function AppContent() {
           <Route path="/profile" element={<CreatorProfile />} />
         </Routes>
       </main>
+      <QuestApprovalListener />
     </div>
+  );
+}
+
+function QuestApprovalListener() {
+  const navigate = useNavigate();
+  const { loadQuests } = useWriterStore();
+  const [approved, setApproved] = useState(null);
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  const handleEvent = useCallback((data) => {
+    if (data.event === 'quest:approved') {
+      loadQuests();
+      setApproved({ questId: data.questId, questTitle: data.questTitle });
+    }
+  }, [loadQuests]);
+
+  useNotifications(handleEvent);
+
+  const handlePublish = async () => {
+    if (!approved) return;
+    setIsPublishing(true);
+    try {
+      await api.publishQuest(approved.questId);
+      await loadQuests();
+      setApproved(null);
+      navigate(`/write/quest/${approved.questId}`);
+    } catch (err) {
+      alert(`Publish failed: ${err.message}`);
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  return (
+    <Modal
+      isOpen={!!approved}
+      onClose={() => setApproved(null)}
+      title="Quest Approved!"
+    >
+      <div className="text-center space-y-4">
+        <div className="w-16 h-16 rounded-full bg-neon-green/20 border-2 border-neon-green flex items-center justify-center mx-auto">
+          <CheckCircle className="w-8 h-8 text-neon-green" />
+        </div>
+        <div>
+          <p className="font-bangers text-xl text-white mb-1">
+            {approved?.questTitle}
+          </p>
+          <p className="text-sm text-white/70">
+            Your quest has been reviewed and approved by the admin team.
+            It's ready to go live!
+          </p>
+        </div>
+        <Badge variant="green">All Scenes Approved</Badge>
+        <div className="flex items-center gap-3 pt-2">
+          <Button
+            variant="ghost"
+            className="flex-1"
+            onClick={() => setApproved(null)}
+          >
+            Later
+          </Button>
+          <Button
+            variant="cyan"
+            className="flex-1"
+            onClick={handlePublish}
+            disabled={isPublishing}
+          >
+            <Rocket className="w-4 h-4" />
+            {isPublishing ? 'Publishing...' : 'Publish Now'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

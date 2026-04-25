@@ -1,4 +1,4 @@
-import { BookOpen, CheckCircle, Link2, Mail, Pencil, Save, Tag, User } from 'lucide-react';
+import { BookOpen, CheckCircle, CreditCard, DollarSign, Link2, Mail, Pencil, Save, Tag, User } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Badge, Button, Card } from '../../components/ui';
@@ -227,6 +227,65 @@ export function CreatorProfile() {
             ))}
           </div>
         )}
+      </Card>
+
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-6">
+          <DollarSign className="w-5 h-5 text-neon-green" />
+          <h3 className="font-bangers text-xl text-white">Monetization</h3>
+        </div>
+
+        <div className="space-y-4">
+          <div className="p-4 bg-neon-green/10 border border-neon-green/30 rounded-lg">
+            <p className="font-bangers text-lg text-neon-green mb-1">
+              Writers earn 33% revenue share
+            </p>
+            <p className="text-sm text-white/70">
+              You'll receive 33% of every sale after payment processing fees.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3 p-4 bg-panel-border/50 rounded-lg">
+            <DollarSign className="w-5 h-5 text-yellow" />
+            <div>
+              <p className="font-bangers text-sm text-white">$20 Minimum Payout</p>
+              <p className="text-xs text-white/50">
+                Earnings are paid out monthly once you reach the minimum threshold.
+              </p>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-panel-border">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="font-bangers text-sm text-white">Stripe Connect</p>
+                <p className="text-xs text-white/50">
+                  {writer.stripeConnected
+                    ? 'Your account is connected and ready to receive payments.'
+                    : 'Connect your Stripe account once to get paid on any quest you create.'
+                  }
+                </p>
+              </div>
+              {writer.stripeConnected ? (
+                <Badge variant="green">Connected</Badge>
+              ) : (
+                <Button variant="purple-outline" size="sm">
+                  <CreditCard className="w-4 h-4" />
+                  Connect Stripe
+                </Button>
+              )}
+            </div>
+
+            {writer.totalEarnings > 0 && (
+              <div className="flex items-center justify-between p-3 bg-input-bg rounded-lg">
+                <span className="text-sm text-white/70">Total Earnings</span>
+                <span className="font-bangers text-lg text-neon-green">
+                  ${writer.totalEarnings.toFixed(2)}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
       </Card>
     </div>
   );

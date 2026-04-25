@@ -1,6 +1,7 @@
 import {
     BookOpen,
     CheckCircle,
+    CircleCheckBig,
     DollarSign,
     Film,
     MapPin,
@@ -163,10 +164,16 @@ function QuestCard({ quest, onClick }) {
         {!quest.coverImage && <Theater className="w-12 h-12 text-white/20" />}
         {quest.coverImage && <div className="absolute inset-0 bg-black/30" />}
         
-        <div className="absolute top-3 left-3 z-10">
+        <div className="absolute top-3 left-3 z-10 flex flex-col gap-1">
           <Badge variant={statusColors[quest.status]}>
             {statusLabels[quest.status]}
           </Badge>
+          {quest.submissionStatus === 'approved' && quest.status !== 'published' && (
+            <Badge variant="green-solid">
+              <CircleCheckBig className="w-3 h-3" />
+              Approved
+            </Badge>
+          )}
         </div>
 
         <div className="absolute top-3 right-3 flex items-center gap-2 z-10">

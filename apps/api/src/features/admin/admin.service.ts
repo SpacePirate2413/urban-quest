@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
+import { notifyUser } from '../../lib/ws.js';
 
 export interface SubmissionFilters {
   status?: string;
@@ -106,6 +107,13 @@ export async function reviewQuestSubmission(
     }),
   ]);
 
+  if (status === 'approved') {
+    notifyUser(updatedQuest.authorId, 'quest:approved', {
+      questId: updatedQuest.id,
+      questTitle: updatedQuest.title,
+    });
+  }
+
   return updatedQuest;
 }
 
@@ -138,9 +146,13 @@ export async function reviewScene(
     const otherScenes = scene.quest.scenes.filter(s => s.id !== sceneId);
     const allApproved = otherScenes.every(s => s.mediaStatus === 'approved');
     if (allApproved) {
-      await prisma.quest.update({
+      const approvedQuest = await prisma.quest.update({
         where: { id: scene.questId },
         data: { submissionStatus: 'approved' },
+      });
+      notifyUser(approvedQuest.authorId, 'quest:approved', {
+        questId: approvedQuest.id,
+        questTitle: approvedQuest.title,
       });
     }
   }
