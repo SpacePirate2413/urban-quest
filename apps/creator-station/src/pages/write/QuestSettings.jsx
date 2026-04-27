@@ -6,16 +6,15 @@ import { api } from '../../services/api';
 import { GENRES, NARRATOR_VOICES, useWriterStore } from '../../store/useWriterStore';
 
 export function QuestSettings({ questId }) {
-  const { quests, updateQuest, deleteQuest, writer } = useWriterStore();
-  const quest = quests.find(q => q.id === questId);
+  const { quests, updateQuest, deleteQuest } = useWriterStore();
   const navigate = useNavigate();
   const [isDeleting, setIsDeleting] = useState(false);
+  const fileInputRef = useRef(null);
 
+  const quest = quests.find(q => q.id === questId);
   if (!quest) return null;
 
   const selectedVoice = NARRATOR_VOICES.find(v => v.id === quest.narratorVoiceId);
-
-  const fileInputRef = useRef(null);
 
   const genreOptions = GENRES.map(genre => ({
     value: genre,

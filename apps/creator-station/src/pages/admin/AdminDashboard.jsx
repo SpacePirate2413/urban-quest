@@ -11,8 +11,12 @@ import {
     FileAudio,
     FileCheck,
     FileVideo,
+    Globe,
+    ImageIcon,
     Loader2,
     Mail,
+    MapPin,
+    Mic,
     Shield,
     ShieldAlert,
     Sparkles,
@@ -24,6 +28,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { Badge, Button, Card, Textarea } from '../../components/ui';
 import { api } from '../../services/api';
+import { NARRATOR_VOICES } from '../../store/useWriterStore';
 import { ReportsTab } from './ReportsTab';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -389,7 +394,7 @@ export function AdminDashboard() {
           </div>
 
           <div className="w-96">
-            <Card className="sticky top-6">
+            <Card className="sticky top-6 max-h-[calc(100vh-120px)] overflow-y-auto">
               {selectedScene ? (
                 <div className="p-4">
                   <div className="flex items-center gap-2 mb-4">
@@ -476,48 +481,158 @@ export function AdminDashboard() {
                   </div>
 
                   <div className="space-y-4">
+                    {/* Cover Image */}
                     <div className="space-y-2">
-                      <h4 className="font-bangers text-xs text-white/70 uppercase">Quest Details</h4>
-                      <div className="bg-input-bg rounded-lg p-3 space-y-3">
-                        {selectedQuest.coverImage && (
-                          <img
-                            src={selectedQuest.coverImage}
-                            alt="Quest cover"
-                            className="w-full h-28 object-cover rounded-lg"
-                          />
-                        )}
-                        <p className="font-bangers text-sm text-white">{selectedQuest.questTitle}</p>
-                        {selectedQuest.questDescription && (
-                          <p className="text-xs text-white/60 leading-relaxed">{selectedQuest.questDescription}</p>
-                        )}
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="flex items-center gap-1.5 text-xs text-white/70">
-                            <Tag className="w-3 h-3 text-cyan" />
-                            {selectedQuest.genre || 'No genre'}
-                          </div>
-                          <div className="flex items-center gap-1.5 text-xs text-white/70">
-                            <Shield className="w-3 h-3 text-yellow" />
-                            {selectedQuest.ageRating || 'E'}
-                          </div>
-                          <div className="flex items-center gap-1.5 text-xs text-white/70">
-                            <DollarSign className="w-3 h-3 text-neon-green" />
-                            {selectedQuest.price > 0 ? `$${selectedQuest.price.toFixed(2)}` : 'Free'}
-                          </div>
-                          <div className="flex items-center gap-1.5 text-xs text-white/70">
-                            <Clock className="w-3 h-3 text-orange" />
-                            {selectedQuest.estimatedDuration ? `${selectedQuest.estimatedDuration} min` : 'Not set'}
-                          </div>
+                      <h4 className="font-bangers text-xs text-white/70 uppercase">Cover Image</h4>
+                      {selectedQuest.coverImage ? (
+                        <img
+                          src={selectedQuest.coverImage}
+                          alt="Quest cover"
+                          className="w-full h-40 object-cover rounded-lg border border-panel-border"
+                        />
+                      ) : (
+                        <div className="w-full h-28 bg-input-bg rounded-lg border border-panel-border flex flex-col items-center justify-center">
+                          <ImageIcon className="w-8 h-8 text-white/20 mb-1" />
+                          <span className="text-xs text-white/30 font-bangers">No cover image</span>
                         </div>
-                        {selectedQuest.usesAI && (
-                          <div className="flex items-center gap-1.5">
-                            <Sparkles className="w-3 h-3 text-cyan" />
-                            <span className="text-xs text-cyan font-bangers">Uses AI Narration</span>
-                          </div>
+                      )}
+                    </div>
+
+                    {/* Title & Tagline */}
+                    <div className="space-y-2">
+                      <h4 className="font-bangers text-xs text-white/70 uppercase">Title & Tagline</h4>
+                      <div className="bg-input-bg rounded-lg p-3 space-y-2">
+                        <p className="font-bangers text-lg text-white">{selectedQuest.questTitle}</p>
+                        {selectedQuest.tagline ? (
+                          <p className="text-sm text-cyan italic">{selectedQuest.tagline}</p>
+                        ) : (
+                          <p className="text-xs text-white/30 italic">No tagline set</p>
                         )}
-                        <p className="text-[10px] text-white/40">{selectedQuest.sceneCount} scene{selectedQuest.sceneCount !== 1 ? 's' : ''}</p>
                       </div>
                     </div>
 
+                    {/* Description */}
+                    <div className="space-y-2">
+                      <h4 className="font-bangers text-xs text-white/70 uppercase">Description</h4>
+                      <div className="bg-input-bg rounded-lg p-3 max-h-40 overflow-y-auto">
+                        {selectedQuest.questDescription ? (
+                          <p className="text-sm text-white/70 leading-relaxed whitespace-pre-wrap">{selectedQuest.questDescription}</p>
+                        ) : (
+                          <p className="text-xs text-white/30 italic">No description</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Quest Properties Grid */}
+                    <div className="space-y-2">
+                      <h4 className="font-bangers text-xs text-white/70 uppercase">Quest Properties</h4>
+                      <div className="bg-input-bg rounded-lg p-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="flex items-center gap-2">
+                            <Tag className="w-4 h-4 text-cyan flex-shrink-0" />
+                            <div>
+                              <p className="text-[10px] text-white/40 font-bangers uppercase">Genre</p>
+                              <p className="text-sm text-white">{selectedQuest.genre || 'Not set'}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <BarChart3 className="w-4 h-4 text-purple flex-shrink-0" />
+                            <div>
+                              <p className="text-[10px] text-white/40 font-bangers uppercase">Difficulty</p>
+                              <p className="text-sm text-white capitalize">{selectedQuest.difficulty || 'medium'}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Shield className="w-4 h-4 text-yellow flex-shrink-0" />
+                            <div>
+                              <p className="text-[10px] text-white/40 font-bangers uppercase">Age Rating</p>
+                              <p className="text-sm text-white">{selectedQuest.ageRating || 'E'}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="w-4 h-4 text-neon-green flex-shrink-0" />
+                            <div>
+                              <p className="text-[10px] text-white/40 font-bangers uppercase">Price</p>
+                              <p className="text-sm text-white">{selectedQuest.price > 0 ? `$${selectedQuest.price.toFixed(2)}` : 'Free (ad-supported)'}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-orange flex-shrink-0" />
+                            <div>
+                              <p className="text-[10px] text-white/40 font-bangers uppercase">Duration</p>
+                              <p className="text-sm text-white">{selectedQuest.estimatedDuration ? `${selectedQuest.estimatedDuration} min` : 'Not set'}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Globe className="w-4 h-4 text-hot-pink flex-shrink-0" />
+                            <div>
+                              <p className="text-[10px] text-white/40 font-bangers uppercase">City</p>
+                              <p className="text-sm text-white">{selectedQuest.city || 'Not set'}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* AI & Narrator */}
+                    <div className="space-y-2">
+                      <h4 className="font-bangers text-xs text-white/70 uppercase">AI & Narrator</h4>
+                      <div className="bg-input-bg rounded-lg p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Sparkles className="w-4 h-4 text-cyan" />
+                            <span className="text-sm text-white">Uses AI Audio</span>
+                          </div>
+                          <Badge variant={selectedQuest.usesAI ? 'cyan' : 'gray'}>
+                            {selectedQuest.usesAI ? 'Yes' : 'No'}
+                          </Badge>
+                        </div>
+                        {(() => {
+                          const voice = NARRATOR_VOICES.find(v => v.id === selectedQuest.narratorVoiceId);
+                          if (!voice) return (
+                            <div className="flex items-center gap-2">
+                              <Mic className="w-4 h-4 text-white/30" />
+                              <span className="text-sm text-white/40">No narrator selected</span>
+                            </div>
+                          );
+                          return (
+                            <div
+                              className="flex items-center gap-3 p-2 rounded-lg"
+                              style={{ backgroundColor: `${voice.color}10`, border: `1px solid ${voice.color}30` }}
+                            >
+                              <div
+                                className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                                style={{ backgroundColor: `${voice.color}20`, border: `2px solid ${voice.color}` }}
+                              >
+                                <Mic className="w-3 h-3" style={{ color: voice.color }} />
+                              </div>
+                              <div>
+                                <p className="text-sm font-bangers" style={{ color: voice.color }}>{voice.name}</p>
+                                <p className="text-[10px] text-white/50">{voice.style}</p>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* Quest Status */}
+                    <div className="space-y-2">
+                      <h4 className="font-bangers text-xs text-white/70 uppercase">Quest Status</h4>
+                      <div className="bg-input-bg rounded-lg p-3 flex items-center gap-3">
+                        <Badge variant={
+                          selectedQuest.status === 'published' ? 'green' :
+                          selectedQuest.status === 'draft' ? 'gray' : 'yellow'
+                        }>
+                          {selectedQuest.status || 'draft'}
+                        </Badge>
+                        <span className="text-xs text-white/50">
+                          {selectedQuest.sceneCount} scene{selectedQuest.sceneCount !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Scenes */}
                     <div className="space-y-2">
                       <h4 className="font-bangers text-xs text-white/70 uppercase">Scenes</h4>
                       <div className="space-y-1">
@@ -538,7 +653,14 @@ export function AdminDashboard() {
                                   <FileAudio className="w-3 h-3 text-cyan" />
                                 )}
                               </div>
-                              <span className="text-xs text-white font-bangers flex-1">Scene {scene.sceneIndex + 1}</span>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-xs text-white font-bangers">Scene {scene.sceneIndex + 1}</span>
+                                {scene.waypointName && (
+                                  <span className="text-[10px] text-white/40 ml-2">
+                                    <MapPin className="w-2.5 h-2.5 inline -mt-0.5" /> {scene.waypointName}
+                                  </span>
+                                )}
+                              </div>
                               <Badge variant={scStatus.color} className="text-[9px]">
                                 {scStatus.label}
                               </Badge>
@@ -546,23 +668,40 @@ export function AdminDashboard() {
                           );
                         })}
                       </div>
-                      <p className="text-[10px] text-white/50">Click a scene to preview its media</p>
+                      <p className="text-[10px] text-white/50">Click a scene to preview its media & script</p>
                     </div>
 
+                    {/* Writer Info */}
                     <div className="space-y-2">
                       <h4 className="font-bangers text-xs text-white/70 uppercase">Writer Info</h4>
                       <div className="bg-input-bg rounded-lg p-3 space-y-2">
                         <div className="flex items-center gap-2">
-                          <User className="w-4 h-4 text-purple" />
+                          {selectedQuest.writerAvatar ? (
+                            <img src={selectedQuest.writerAvatar} alt="" className="w-8 h-8 rounded-full object-cover border border-panel-border" />
+                          ) : (
+                            <User className="w-4 h-4 text-purple" />
+                          )}
                           <span className="text-sm text-white">{selectedQuest.writerName}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <Mail className="w-4 h-4 text-cyan" />
                           <span className="text-sm text-white/70">{selectedQuest.writerEmail}</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-yellow" />
-                          <span className="text-sm text-white/70">{formatDate(selectedQuest.updatedAt)}</span>
+                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-panel-border">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="w-3 h-3 text-white/40" />
+                            <div>
+                              <p className="text-[10px] text-white/40">Created</p>
+                              <p className="text-[11px] text-white/60">{selectedQuest.createdAt ? formatDate(selectedQuest.createdAt) : '—'}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Calendar className="w-3 h-3 text-yellow" />
+                            <div>
+                              <p className="text-[10px] text-white/40">Updated</p>
+                              <p className="text-[11px] text-white/60">{formatDate(selectedQuest.updatedAt)}</p>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>

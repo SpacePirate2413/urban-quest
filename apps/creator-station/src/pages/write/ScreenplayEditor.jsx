@@ -11,9 +11,6 @@ export function ScreenplayEditor({ questId }) {
   if (!quest) return null;
 
   const selectedScene = quest.scenes.find(s => s.id === selectedSceneId);
-  const selectedWaypoint = selectedScene 
-    ? quest.waypoints.find(wp => wp.id === selectedScene.waypointId)
-    : null;
 
   const waypointOptions = quest.waypoints.map(wp => ({
     value: wp.id,

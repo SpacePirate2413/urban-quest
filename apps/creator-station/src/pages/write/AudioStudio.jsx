@@ -51,9 +51,6 @@ export function AudioStudio({ questId }) {
   const previewAudioRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  const selectedScene = quest?.scenes.find(s => s.id === selectedSceneId);
-  const selectedVoice = NARRATOR_VOICES.find(v => v.id === quest?.narratorVoiceId);
-
   const sceneOptions = quest?.scenes.map((scene, index) => ({
     value: scene.id,
     label: `Scene ${index + 1}`,
@@ -297,9 +294,6 @@ export function AudioStudio({ questId }) {
     }
   };
 
-  const handleExportAll = () => {
-    alert('Export functionality would download all generated audio files as a ZIP.');
-  };
 
   if (!quest) return null;
 

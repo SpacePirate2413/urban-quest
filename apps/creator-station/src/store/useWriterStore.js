@@ -404,7 +404,6 @@ export const useWriterStore = create((set, get) => ({
   submitSceneMedia: (questId, sceneId, mediaFile, mediaType) => {
     const state = get();
     const quest = state.quests.find(q => q.id === questId);
-    const scene = quest?.scenes.find(s => s.id === sceneId);
     const sceneIndex = quest?.scenes.findIndex(s => s.id === sceneId) + 1;
     
     const submission = {

@@ -29,9 +29,6 @@ export function ReReviewPrompt({ questId }) {
     setIsSubmitting(true);
     try {
       await api.submitQuest(questId);
-      quest.scenes?.forEach(s => {
-        updateQuest(questId, {}); // refresh local state
-      });
       updateQuest(questId, { submissionStatus: 'pending' });
       setIsOpen(false);
     } catch (err) {

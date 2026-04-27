@@ -33,7 +33,7 @@ class TTSService {
       }
 
       return await response.blob();
-    } catch (error) {
+    } catch {
       throw new TTSError(
         'Text-to-speech is not available. Record audio manually.'
       );
