@@ -1,9 +1,9 @@
-import { ImagePlus, Mic, Settings, Sparkles, X } from 'lucide-react';
+import { ImagePlus, Settings, Sparkles, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Badge, Button, Card, Input, Select, Textarea } from '../../components/ui';
 import { api } from '../../services/api';
-import { GENRES, NARRATOR_VOICES, useWriterStore } from '../../store/useWriterStore';
+import { GENRES, useWriterStore } from '../../store/useWriterStore';
 
 export function QuestSettings({ questId }) {
   const { quests, updateQuest, deleteQuest } = useWriterStore();
@@ -13,8 +13,6 @@ export function QuestSettings({ questId }) {
 
   const quest = quests.find(q => q.id === questId);
   if (!quest) return null;
-
-  const selectedVoice = NARRATOR_VOICES.find(v => v.id === quest.narratorVoiceId);
 
   const genreOptions = GENRES.map(genre => ({
     value: genre,
@@ -230,35 +228,6 @@ export function QuestSettings({ questId }) {
               </button>
             </div>
           </div>
-
-          {selectedVoice && (
-            <div 
-              className="flex items-center gap-3 p-4 rounded-lg"
-              style={{ 
-                backgroundColor: `${selectedVoice.color}10`,
-                border: `1px solid ${selectedVoice.color}40`,
-              }}
-            >
-              <div 
-                className="w-10 h-10 rounded-full flex items-center justify-center"
-                style={{ 
-                  backgroundColor: `${selectedVoice.color}20`,
-                  border: `2px solid ${selectedVoice.color}`,
-                }}
-              >
-                <Mic className="w-4 h-4" style={{ color: selectedVoice.color }} />
-              </div>
-              <div>
-                <p className="text-sm">
-                  <span style={{ color: selectedVoice.color }} className="font-bangers">
-                    {selectedVoice.name}
-                  </span>
-                  <span className="text-white/70"> will narrate this quest</span>
-                </p>
-                <p className="text-xs text-white/50">{selectedVoice.style}</p>
-              </div>
-            </div>
-          )}
 
           <Select
             label="Status"
