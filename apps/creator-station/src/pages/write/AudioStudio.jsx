@@ -1,4 +1,5 @@
 import {
+    AlertTriangle,
     Check,
     CheckCircle,
     Clock,
@@ -305,6 +306,7 @@ export function AudioStudio({ questId }) {
   const statusBadge = {
     uploaded: { variant: 'cyan', icon: CheckCircle, text: 'Uploaded' },
     pending: { variant: 'yellow', icon: Clock, text: 'Pending Review' },
+    needs_re_review: { variant: 'orange', icon: AlertTriangle, text: 'Needs Re-Review' },
     approved: { variant: 'green', icon: CheckCircle, text: 'Approved' },
     rejected: { variant: 'pink', icon: XCircle, text: 'Rejected' },
   };
@@ -577,7 +579,7 @@ export function AudioStudio({ questId }) {
               </div>
             )}
 
-            {(!questSubmissionStatus || questSubmissionStatus === 'rejected') && (
+            {(!questSubmissionStatus || questSubmissionStatus === 'rejected' || questSubmissionStatus === 'needs_re_review') && (
               <Button
                 variant="green"
                 className="w-full"
@@ -592,7 +594,9 @@ export function AudioStudio({ questId }) {
                 ) : (
                   <>
                     <Send className="w-4 h-4" />
-                    {questSubmissionStatus === 'rejected' ? 'Resubmit All Scenes' : 'Submit All Scenes for Review'}
+                    {(questSubmissionStatus === 'rejected' || questSubmissionStatus === 'needs_re_review')
+                      ? 'Resubmit All Scenes'
+                      : 'Submit All Scenes for Review'}
                   </>
                 )}
               </Button>
