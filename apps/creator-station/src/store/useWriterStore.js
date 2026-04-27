@@ -1,21 +1,35 @@
 import { create } from 'zustand';
 import { api } from '../services/api';
 
+// Metadata catalog for narrators. Keyed by the voice ID used in Chatterbox's
+// voice library (the `voice` field of /v1/audio/speech requests). Entries are
+// matched against the live list returned by Chatterbox at runtime — voices in
+// the library that don't have a catalog entry still show up in the picker
+// using their voice ID as the display name.
+//
+// To onboard a new narrator: pick an unused id below, find a public-domain
+// LibriVox sample matching the personality, trim to 15–30 seconds of clean
+// speech, and POST it to chatterbox /v1/voices with `name=<id>`.
 export const NARRATOR_VOICES = [
-  { id: 'narrator-male-deep', name: 'Marcus', gender: 'male', age: '40s', style: 'Deep & Authoritative', color: '#00d4ff', description: 'Rich, commanding voice perfect for epic adventures and mysteries' },
-  { id: 'narrator-female-warm', name: 'Elena', gender: 'female', age: '30s', style: 'Warm & Engaging', color: '#ff2d78', description: 'Inviting tone that draws listeners into intimate stories' },
-  { id: 'narrator-male-energetic', name: 'Jake', gender: 'male', age: '20s', style: 'Energetic & Dynamic', color: '#39ff14', description: 'Youthful energy ideal for action-packed quests' },
-  { id: 'narrator-female-bright', name: 'Lily', gender: 'female', age: '20s', style: 'Bright & Clear', color: '#ffd60a', description: 'Crystal clear delivery for family-friendly adventures' },
-  { id: 'narrator-male-gravelly', name: 'Arthur', gender: 'male', age: '60s', style: 'Gravelly & Wise', color: '#ff6b2b', description: 'Weathered voice for noir and historical tales' },
-  { id: 'narrator-female-wise', name: 'Margaret', gender: 'female', age: '60s', style: 'Wise & Soothing', color: '#a855f7', description: 'Calming presence for reflective journeys' },
-  { id: 'narrator-male-mysterious', name: 'Draven', gender: 'male', age: '40s', style: 'Dark & Mysterious', color: '#ef4444', description: 'Haunting tone for horror and thriller quests' },
-  { id: 'narrator-female-sultry', name: 'Vex', gender: 'female', age: '30s', style: 'Sultry & Intriguing', color: '#c084fc', description: 'Captivating voice for romance and intrigue' },
+  { id: 'marcus', name: 'Marcus', gender: 'male', age: '40s', style: 'Deep & Authoritative', color: '#00d4ff', description: 'Rich, commanding voice perfect for epic adventures and mysteries' },
+  { id: 'elena', name: 'Elena', gender: 'female', age: '30s', style: 'Warm & Engaging', color: '#ff2d78', description: 'Inviting tone that draws listeners into intimate stories' },
+  { id: 'jake', name: 'Jake', gender: 'male', age: '20s', style: 'Energetic & Dynamic', color: '#39ff14', description: 'Youthful energy ideal for action-packed quests' },
+  { id: 'lily', name: 'Lily', gender: 'female', age: '20s', style: 'Bright & Clear', color: '#ffd60a', description: 'Crystal clear delivery for family-friendly adventures' },
+  { id: 'arthur', name: 'Arthur', gender: 'male', age: '60s', style: 'Gravelly & Wise', color: '#ff6b2b', description: 'Weathered voice for noir and historical tales' },
+  { id: 'margaret', name: 'Margaret', gender: 'female', age: '60s', style: 'Wise & Soothing', color: '#a855f7', description: 'Calming presence for reflective journeys' },
+  { id: 'draven', name: 'Draven', gender: 'male', age: '40s', style: 'Dark & Mysterious', color: '#ef4444', description: 'Haunting tone for horror and thriller quests' },
+  { id: 'vex', name: 'Vex', gender: 'female', age: '30s', style: 'Sultry & Intriguing', color: '#c084fc', description: 'Captivating voice for romance and intrigue' },
 ];
 
 export const GENRES = [
   'Thriller', 'Mystery', 'Adventure', 'Horror', 'Romance', 'Comedy', 'Sci-Fi', 'Fantasy'
 ];
 
+
+// Module-scoped debounce timers for `updateScene`. Keyed by sceneId, holds
+// `{ timer: <setTimeout id>, pending: <coalesced payload> }`. Lives outside
+// the store so timers survive across set() calls.
+const sceneSaveTimers = {};
 
 // Load persisted data from localStorage
 const loadPersistedState = () => {
@@ -377,18 +391,79 @@ export const useWriterStore = create((set, get) => ({
     }
   },
 
-  updateScene: (questId, sceneId, updates) => set((state) => ({
-    quests: state.quests.map((q) =>
-      q.id === questId
-        ? {
-            ...q,
-            scenes: q.scenes.map((s) =>
-              s.id === sceneId ? { ...s, ...updates } : s
-            ),
-          }
-        : q
-    ),
-  })),
+  // Scene save state, keyed by sceneId. UI reads `useWriterStore(s => s.sceneSaveState[id])`
+  // to render the "Saving…" / "Saved" indicator.
+  // Values: { status: 'idle' | 'saving' | 'saved' | 'error', error?: string }
+  sceneSaveState: {},
+
+  updateScene: (questId, sceneId, updates) => {
+    // 1. Optimistic local update so the UI reflects keystrokes immediately.
+    set((state) => ({
+      quests: state.quests.map((q) =>
+        q.id === questId
+          ? {
+              ...q,
+              scenes: q.scenes.map((s) =>
+                s.id === sceneId ? { ...s, ...updates } : s
+              ),
+            }
+          : q
+      ),
+    }));
+
+    // 2. Decide which fields actually round-trip to the server. We only send
+    //    columns the backend `sceneSchema` accepts, and we serialize choices
+    //    to JSON because the column is a string in Prisma.
+    const SERVER_FIELDS = ['script', 'question', 'choices', 'waypointId'];
+    const serverUpdates = {};
+    for (const k of SERVER_FIELDS) {
+      if (k in updates) {
+        serverUpdates[k] =
+          k === 'choices' ? JSON.stringify(updates[k] || []) : updates[k];
+      }
+    }
+    if (Object.keys(serverUpdates).length === 0) return;
+
+    // Skip API calls for scenes that only exist locally (addScene fell back to
+    // the offline path). Local IDs look like `scene-1700000000000`; server
+    // IDs are CUIDs that start with `c` and are 25 chars.
+    if (sceneId.startsWith('scene-')) return;
+
+    // 3. Debounce: 500ms idle since the last keystroke before we save.
+    if (!sceneSaveTimers[sceneId]) sceneSaveTimers[sceneId] = {};
+    if (sceneSaveTimers[sceneId].timer) clearTimeout(sceneSaveTimers[sceneId].timer);
+    // Coalesce pending updates so the latest value of every touched field
+    // gets sent in one request.
+    sceneSaveTimers[sceneId].pending = {
+      ...(sceneSaveTimers[sceneId].pending || {}),
+      ...serverUpdates,
+    };
+
+    sceneSaveTimers[sceneId].timer = setTimeout(async () => {
+      const payload = sceneSaveTimers[sceneId].pending;
+      sceneSaveTimers[sceneId].pending = null;
+      sceneSaveTimers[sceneId].timer = null;
+      set((state) => ({
+        sceneSaveState: { ...state.sceneSaveState, [sceneId]: { status: 'saving' } },
+      }));
+      try {
+        await api.updateScene(sceneId, payload);
+        set((state) => ({
+          sceneSaveState: {
+            ...state.sceneSaveState,
+            [sceneId]: { status: 'saved', savedAt: Date.now() },
+          },
+        }));
+      } catch (err) {
+        set((state) => ({
+          sceneSaveState: {
+            ...state.sceneSaveState,
+            [sceneId]: { status: 'error', error: err.message },
+          },
+        }));
+      }
+    }, 500);
+  },
 
   deleteScene: (questId, sceneId) => set((state) => ({
     quests: state.quests.map((q) =>

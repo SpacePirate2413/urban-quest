@@ -21,10 +21,15 @@ export async function buildApp() {
   const app = Fastify({
     logger: {
       level: env.LOG_LEVEL,
-      transport: env.NODE_ENV === 'development' 
-        ? { target: 'pino-pretty' } 
+      transport: env.NODE_ENV === 'development'
+        ? { target: 'pino-pretty' }
         : undefined,
     },
+    // Allow data: URIs for cover images. Default is 1 MiB which fails for any
+    // real-world photo. Long-term, cover images should be uploaded via
+    // multipart to /api/media (see follow-up A26 in Questions-Left.md), but
+    // for now we accept bigger JSON bodies so the editor flow is unblocked.
+    bodyLimit: 10 * 1024 * 1024,
   });
 
   await app.register(cors, {

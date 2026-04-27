@@ -115,7 +115,13 @@ model Scene {
   question   String?
   choices    String? // JSON array of choices
   orderIndex Int     @default(0)
-  
+
+  // Per-scene narrator override. When null, the player falls back to the
+  // owning quest's narratorVoiceId. The creator picks this in the AI Narrate
+  // modal; it is also stamped onto the quest as the new "last-used default"
+  // so subsequent scenes pre-select the same voice (Q1c hybrid scope).
+  narratorVoiceId String?
+
   // Media
   mediaUrl    String?
   mediaType   String? // audio | video

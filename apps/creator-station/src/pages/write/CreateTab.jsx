@@ -1,9 +1,11 @@
 import {
     AlertCircle,
+    Check,
     Eye,
     FileAudio,
     FileVideo,
     Film,
+    Loader2,
     Plus,
     PlusCircle,
     RefreshCw,
@@ -18,6 +20,36 @@ import { Badge, Button, Card, Input, Modal, Select } from '../../components/ui';
 import { api } from '../../services/api';
 import { useWriterStore } from '../../store/useWriterStore';
 import { AINarrateModal } from './AINarrateModal';
+
+function SaveIndicator({ sceneId }) {
+  const state = useWriterStore((s) => s.sceneSaveState[sceneId]);
+  if (!state || state.status === 'idle') return null;
+  if (state.status === 'saving') {
+    return (
+      <span className="flex items-center gap-1 text-xs text-white/60">
+        <Loader2 className="w-3 h-3 animate-spin" /> Saving…
+      </span>
+    );
+  }
+  if (state.status === 'saved') {
+    return (
+      <span className="flex items-center gap-1 text-xs text-neon-green">
+        <Check className="w-3 h-3" /> Saved
+      </span>
+    );
+  }
+  if (state.status === 'error') {
+    return (
+      <span
+        className="flex items-center gap-1 text-xs text-hot-pink"
+        title={state.error}
+      >
+        <AlertCircle className="w-3 h-3" /> Save failed
+      </span>
+    );
+  }
+  return null;
+}
 
 export function CreateTab({ questId }) {
   const { quests, addScene, updateScene, deleteScene, updateQuest } = useWriterStore();
@@ -391,9 +423,12 @@ export function CreateTab({ questId }) {
                     </Badge>
                   )}
                 </div>
-                <Button variant="danger-outline" size="sm" onClick={handleDeleteScene}>
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+                <div className="flex items-center gap-3">
+                  <SaveIndicator sceneId={selectedSceneId} />
+                  <Button variant="danger-outline" size="sm" onClick={handleDeleteScene}>
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
 
               {/* Waypoint selector */}

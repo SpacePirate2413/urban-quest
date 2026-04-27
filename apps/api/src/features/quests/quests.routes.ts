@@ -60,6 +60,7 @@ const sceneSchema = z.object({
   question: z.string().optional(),
   choices: z.string().optional(), // JSON string
   waypointId: z.string().optional(),
+  narratorVoiceId: z.string().optional(),
 });
 
 export async function questRoutes(app: FastifyInstance) {
