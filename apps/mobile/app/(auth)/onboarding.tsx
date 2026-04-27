@@ -10,6 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { router } from 'expo-router';
+import * as Location from 'expo-location';
 import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
 import { useAuthStore, useLocationStore } from '@/src/store';
 import { PRESET_AVATARS } from '@/src/data/mockData';
@@ -59,9 +60,20 @@ export default function OnboardingScreen() {
     setStep('location');
   };
 
-  const handleLocationPermission = (granted: boolean) => {
+  const handleLocationPermission = async (request: boolean) => {
+    let granted = false;
+
+    if (request) {
+      try {
+        const result = await Location.requestForegroundPermissionsAsync();
+        granted = result.status === Location.PermissionStatus.GRANTED;
+      } catch {
+        granted = false;
+      }
+    }
+
     setLocationPermission(granted ? 'granted' : 'denied');
-    
+
     useAuthStore.setState({
       isAuthenticated: true,
       isOnboarding: false,

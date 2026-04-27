@@ -59,6 +59,56 @@ class ApiClient {
     await this.setToken(null);
   }
 
+  async deleteAccount() {
+    if (!this.token) {
+      throw new Error('Not signed in');
+    }
+    const response = await fetch(`${API_BASE}/users/me`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${this.token}` },
+    });
+    if (!response.ok && response.status !== 204) {
+      const error = await response.json().catch(() => ({ error: 'Delete failed' }));
+      throw new Error(error.error || 'Delete failed');
+    }
+    await this.setToken(null);
+  }
+
+  // Moderation — Apple Guideline 1.2 + Google Play UGC policy
+  async reportContent(input: {
+    entityType: 'quest' | 'scene' | 'review' | 'user';
+    entityId: string;
+    reason:
+      | 'spam'
+      | 'harassment'
+      | 'sexual_minors'
+      | 'hate'
+      | 'violence'
+      | 'illegal'
+      | 'ip'
+      | 'scam'
+      | 'impersonation'
+      | 'other';
+    details?: string;
+  }) {
+    return this.request<any>('/reports', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async blockUser(userId: string) {
+    return this.request<any>(`/users/${userId}/block`, { method: 'POST' });
+  }
+
+  async unblockUser(userId: string) {
+    return this.request<any>(`/users/${userId}/block`, { method: 'DELETE' });
+  }
+
+  async getMyBlocks() {
+    return this.request<any[]>('/me/blocks');
+  }
+
   // Quests
   async getPublishedQuests(filters: {
     genre?: string;
@@ -89,10 +139,10 @@ class ApiClient {
     return this.request<{ owned: boolean; purchase?: any }>(`/purchases/check/${questId}`);
   }
 
-  async purchaseQuest(questId: string, paymentMethod?: string) {
+  async purchaseQuest(questId: string, revenueCatTransactionId?: string) {
     return this.request<any>('/purchases', {
       method: 'POST',
-      body: JSON.stringify({ questId, paymentMethod }),
+      body: JSON.stringify({ questId, revenueCatTransactionId }),
     });
   }
 

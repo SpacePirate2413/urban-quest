@@ -158,24 +158,26 @@ export function QuestSettings({ questId }) {
             />
 
             <div>
-              <label className="font-bangers text-xs uppercase tracking-wider text-white block mb-1">
-                Price
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/70">$</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.99"
-                  value={quest.price}
-                  onChange={(e) => handleUpdate('price', parseFloat(e.target.value) || 0)}
-                  className="w-full bg-input-bg border-[1.5px] border-panel-border rounded-lg pl-7 pr-3 py-2 text-sm text-white focus:outline-none focus:border-cyan transition-colors"
-                />
-              </div>
+              <Select
+                label="Price"
+                placeholder=""
+                value={String(quest.price ?? 0)}
+                onChange={(e) => handleUpdate('price', parseFloat(e.target.value))}
+                options={[
+                  { value: '0', label: 'Free (ad-supported)' },
+                  { value: '0.99', label: '$0.99' },
+                  { value: '1.99', label: '$1.99' },
+                  { value: '2.99', label: '$2.99' },
+                  { value: '4.99', label: '$4.99' },
+                  { value: '9.99', label: '$9.99' },
+                ]}
+              />
               <p className="text-xs text-white/50 mt-1">
-                Set to 0 for free quest
+                Apple/Google require fixed price tiers. Free quests show ads between scenes; Premium subscribers see no ads.
               </p>
             </div>
+
+
 
             <div>
               <label className="font-bangers text-xs uppercase tracking-wider text-white block mb-1">

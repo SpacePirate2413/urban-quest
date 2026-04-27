@@ -15,6 +15,39 @@ export function CreatorProfile() {
     bio: '',
     genres: [],
   });
+  const [payoutStatus, setPayoutStatus] = useState(null);
+  const [payoutLoading, setPayoutLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getPayoutStatus()
+      .then((status) => { if (!cancelled) setPayoutStatus(status); })
+      .catch(() => { if (!cancelled) setPayoutStatus({ connected: false, status: 'unconnected' }); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleConnectPayouts = async () => {
+    setPayoutLoading(true);
+    try {
+      const { url } = await api.getPayoutOnboardingLink();
+      window.location.href = url;
+    } catch (err) {
+      alert(`Could not start payout onboarding: ${err.message}`);
+      setPayoutLoading(false);
+    }
+  };
+
+  const handleManagePayouts = async () => {
+    setPayoutLoading(true);
+    try {
+      const { url } = await api.getPayoutDashboardLink();
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      alert(`Could not open Stripe dashboard: ${err.message}`);
+    } finally {
+      setPayoutLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (writer) {
@@ -238,10 +271,11 @@ export function CreatorProfile() {
         <div className="space-y-4">
           <div className="p-4 bg-neon-green/10 border border-neon-green/30 rounded-lg">
             <p className="font-bangers text-lg text-neon-green mb-1">
-              Writers earn 33% revenue share
+              Creators earn 70% of net revenue
             </p>
             <p className="text-sm text-white/70">
-              You'll receive 33% of every sale after payment processing fees.
+              On every paid quest sale, Apple/Google take 15–30%; you receive 70% of the remainder
+              and Urban Quest keeps 30%. Subscription and ad revenue are not split at launch.
             </p>
           </div>
 
@@ -257,33 +291,58 @@ export function CreatorProfile() {
 
           <div className="pt-4 border-t border-panel-border">
             <div className="flex items-center justify-between mb-4">
-              <div>
+              <div className="flex-1">
                 <p className="font-bangers text-sm text-white">Stripe Connect</p>
                 <p className="text-xs text-white/50">
-                  {writer.stripeConnected
-                    ? 'Your account is connected and ready to receive payments.'
-                    : 'Connect your Stripe account once to get paid on any quest you create.'
-                  }
+                  {payoutStatus?.status === 'active'
+                    ? 'Your payout account is ready to receive payments.'
+                    : payoutStatus?.status === 'pending' || payoutStatus?.status === 'restricted'
+                      ? 'Onboarding incomplete. Finish setup to receive payouts.'
+                      : 'Connect a Stripe account once to get paid on any paid quest you create.'}
                 </p>
               </div>
-              {writer.stripeConnected ? (
-                <Badge variant="green">Connected</Badge>
-              ) : (
-                <Button variant="purple-outline" size="sm">
-                  <CreditCard className="w-4 h-4" />
-                  Connect Stripe
-                </Button>
-              )}
-            </div>
-
-            {writer.totalEarnings > 0 && (
-              <div className="flex items-center justify-between p-3 bg-input-bg rounded-lg">
-                <span className="text-sm text-white/70">Total Earnings</span>
-                <span className="font-bangers text-lg text-neon-green">
-                  ${writer.totalEarnings.toFixed(2)}
-                </span>
+              <div className="flex items-center gap-2">
+                {payoutStatus?.status === 'active' && (
+                  <>
+                    <Badge variant="green">Connected</Badge>
+                    <Button
+                      variant="purple-outline"
+                      size="sm"
+                      disabled={payoutLoading}
+                      onClick={handleManagePayouts}
+                    >
+                      <Link2 className="w-4 h-4" />
+                      Manage
+                    </Button>
+                  </>
+                )}
+                {(payoutStatus?.status === 'pending' || payoutStatus?.status === 'restricted') && (
+                  <>
+                    <Badge variant="yellow">{payoutStatus.status === 'restricted' ? 'Restricted' : 'Pending'}</Badge>
+                    <Button
+                      variant="purple-outline"
+                      size="sm"
+                      disabled={payoutLoading}
+                      onClick={handleConnectPayouts}
+                    >
+                      <CreditCard className="w-4 h-4" />
+                      Finish setup
+                    </Button>
+                  </>
+                )}
+                {(!payoutStatus || payoutStatus.status === 'unconnected') && (
+                  <Button
+                    variant="purple-outline"
+                    size="sm"
+                    disabled={payoutLoading}
+                    onClick={handleConnectPayouts}
+                  >
+                    <CreditCard className="w-4 h-4" />
+                    {payoutLoading ? 'Loading...' : 'Connect Stripe'}
+                  </Button>
+                )}
               </div>
-            )}
+            </div>
           </div>
         </div>
       </Card>

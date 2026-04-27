@@ -3,6 +3,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
+import { useLocationTracking } from '@/src/hooks/useLocationTracking';
 import { Colors } from '@/src/theme/theme';
 
 function TabIcon({ name, focused }: { name: string; focused: boolean }) {
@@ -22,6 +23,8 @@ function TabIcon({ name, focused }: { name: string; focused: boolean }) {
 }
 
 export default function TabLayout() {
+  useLocationTracking();
+
   return (
     <Tabs
       screenOptions={{

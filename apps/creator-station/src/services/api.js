@@ -211,6 +211,36 @@ class ApiClient {
       body: JSON.stringify({ status, notes }),
     });
   }
+
+  // Moderation reports (admin-only — backend enforces role='admin')
+  async getReports({ limit = 50, offset = 0 } = {}) {
+    const params = new URLSearchParams({ limit, offset });
+    return this.request(`/admin/reports?${params}`);
+  }
+
+  async getReport(id) {
+    return this.request(`/admin/reports/${id}`);
+  }
+
+  async resolveReport(id, action, notes) {
+    return this.request(`/admin/reports/${id}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ action, notes }),
+    });
+  }
+
+  // Stripe Connect creator payouts (Q8g)
+  async getPayoutStatus() {
+    return this.request('/me/payouts');
+  }
+
+  async getPayoutOnboardingLink() {
+    return this.request('/me/payouts/onboarding-link', { method: 'POST' });
+  }
+
+  async getPayoutDashboardLink() {
+    return this.request('/me/payouts/dashboard-link');
+  }
 }
 
 export const api = new ApiClient();

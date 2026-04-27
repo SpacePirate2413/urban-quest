@@ -8,7 +8,15 @@ Companion doc: [`app-store-readiness.md`](./app-store-readiness.md) — the deep
 
 ## ⭐ Next Recommended Task
 
-> **Q4 — Apple Developer Program account.** $99/yr; takes ~24–48h to activate (longer for organization accounts that need a D-U-N-S number). Without it we can't create the App Store Connect record, generate signing certs, or upload a TestFlight build. **Two sub-questions:** (a) is there already an active account, and (b) individual or organization, and under what name? Q5 (Google Play Console — $25 one-time) is the parallel question for Android and can be answered at the same time.
+> **External account setup so the in-app paths actually function.** All four A6 chunks are coded and the app boots cleanly in dev with placeholders / test ad IDs. To turn it on for real you need to register the apps with each provider and drop the real keys into the build environment:
+>
+> 1. **App Store Connect** — create the app record with bundle ID `com.urbanquest.app`. Create the IAP products: `com.urbanquest.app.premium.monthly` (auto-renewable subscription, $5.99/mo) and one non-consumable per price tier (`com.urbanquest.app.quest.tier_99` through `_999`).
+> 2. **Google Play Console** — same products in Play Console (subscription + non-consumable in-app products).
+> 3. **RevenueCat** — create the project, add an iOS app and Android app pointing at the bundle/applicationId; copy the public API keys → set `EXPO_PUBLIC_REVENUECAT_IOS_KEY` and `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` for builds. Configure the "premium" entitlement attached to the monthly subscription, and a "default" offering that surfaces the monthly package.
+> 4. **AdMob** — register the app, get real App IDs and Interstitial Ad Unit IDs. Replace the test IDs in `app.json` with the real `androidAppId`/`iosAppId`, and set `EXPO_PUBLIC_ADMOB_INTERSTITIAL_IOS` / `EXPO_PUBLIC_ADMOB_INTERSTITIAL_ANDROID`.
+> 5. **Stripe** — create a Stripe account (test mode is fine for dev) and turn on Connect → Platforms. Set `STRIPE_SECRET_KEY` (and the Connect return/refresh URLs) in `apps/api/.env`.
+>
+> After these are filled in, the next code-side leverage points are: **A21** (update Privacy Policy on WordPress to disclose AdMob/IDFA), **A23** (update App Store Connect privacy form — answers in `docs/privacy-data-inventory.md`), **A11** (capture screenshots), **A17** (paste reviewer notes), and **A14** (Apple age-rating questionnaire).
 
 ---
 
@@ -17,34 +25,57 @@ Companion doc: [`app-store-readiness.md`](./app-store-readiness.md) — the deep
 ### Identity & Accounts
 - [x] **Q2.** iOS bundle ID = **`com.urbanquest.app`** (answered 2026-04-25). Applied to `apps/mobile/app.json`.
 - [x] **Q3.** Android `applicationId` = **`com.urbanquest.app`** (matches iOS — answered 2026-04-25). Applied to `apps/mobile/app.json`.
-- [ ] **Q4.** **Apple Developer Program** account — active? Individual or organization? Whose name on the listing?
-- [ ] **Q5.** **Google Play Console** account — active? ($25 one-time fee, plus the new "20-tester / 14-day closed test" requirement for new personal developer accounts.)
+- [x] **Q4.** Apple Developer Program — **active, Organization, Blue Pelican Digital LLC** (answered 2026-04-26).
+- [x] **Q5.** Google Play Console — **active, Organization, Blue Pelican Digital LLC** (answered 2026-04-26). Org account = no 20-tester / 14-day closed-test pre-launch requirement.
 - [N/A] **Q6.** Mac Developer ID / Microsoft Partner Center — **not needed** since Creator Station ships web-only (Q1 = a).
 
 ### Product & Monetization
-- [ ] **Q7.** Should iPad be supported at v1 launch, or set `supportsTablet: false` to skip iPad screenshots and iPad QA?
-- [ ] **Q8.** **Monetization model at launch** — free, paid up-front, IAP (per quest, per narrator voice), subscription (creator tier), or freemium? This determines whether StoreKit / Google Play Billing are on the v1 critical path.
-- [ ] **Q9.** If we sell digital goods on mobile, will we also offer those goods on the website? If yes, the in-app prices must comply with Apple's "anti-steering" rules (no link from the app to a cheaper web checkout).
+- [x] **Q7.** iPad at v1 = **no** (answered 2026-04-26). `supportsTablet` set to `false` in `apps/mobile/app.json`. Revisit for v1.1.
+- [x] **Q8.** Monetization model = **Freemium** (answered 2026-04-26). StoreKit + Google Play Billing **on v1 critical path**.
+- [x] **Q8a.** Three-pronged monetization (answered 2026-04-26):
+  1. **Free quests** play ad-supported (interstitial ad after each scene).
+  2. **Paid quests** — creator picks the price (constrained to Apple/Google price tiers — see Q8b).
+  3. **Premium subscription = $5.99/mo** removes ads. Does NOT unlock paid quests (those are still purchased individually).
+- [x] **Q9.** IAP-only on mobile (answered 2026-04-26). Digital goods sold via Apple/Google IAP only — no parallel web checkout for the same items, no in-app reference to web pricing. Sidesteps Apple/Google anti-steering scrutiny.
 
 ### Legal & Hosting
-- [ ] **Q10.** Where will the **Privacy Policy** be hosted? (Marketing site, GitHub Pages, Notion-public, etc.) Required for both stores; URL must load in a private browser.
-- [ ] **Q11.** Where will the **Terms of Service / EULA** be hosted? (Required for Google Play if collecting personal data; recommended for Apple.)
-- [ ] **Q12.** Where will the **Account Deletion** flow be hosted? (Required by both stores since 2024 — must be in-app **and** at a public URL.)
-- [ ] **Q13.** Company / business name to put on App Store Connect and Google Play Console listings.
-- [ ] **Q14.** Support email address shown publicly on both store listings.
+- [x] **Q10.** Privacy Policy hosted at **https://urbanquestapp.com/privacy-policy/** (effective 2026-01-15). Snapshot saved to [`docs/policies/privacy-policy.md`](./policies/privacy-policy.md). Confirmed via WebFetch on 2026-04-26.
+- [x] **Q11.** Terms & Conditions hosted at **https://urbanquestapp.com/terms-conditions/** (effective 2026-02-06). Snapshot saved to [`docs/policies/terms-conditions.md`](./policies/terms-conditions.md). Section 15 covers the Apple EULA pass-through, so this doc satisfies both Q11 and the EULA half of X9.
+- [x] **Q12.** Account Deletion (answered 2026-04-26):
+  - **Public URL** = **https://urbanquestapp.com/account-deletion/**. Page body drafted in `docs/account-deletion.md` for WordPress paste-in.
+  - **In-app flow** = required in addition to the public page; tracked as new code task **A19** below.
+- [x] **Q13.** Listing company name = **Blue Pelican Digital LLC** (answered 2026-04-26 alongside Q4/Q5).
+- [x] **Q14.** Public support email = **support@urbanquestapp.com** (active inbox; answered 2026-04-26). Corrected versions of policies prepared in `docs/privacy-policy.md` + `docs/terms-conditions.md` for the WordPress site update.
 
 ### UGC & Moderation
-- [ ] **Q15.** Creator Station publishes quests that mobile users consume — this is **UGC**. Apple Guideline 1.2 + Google Play UGC policy require: in-app **report content**, in-app **block user**, **moderation within 24h**, and an **EULA** that prohibits objectionable content. Do these exist anywhere today? If not, building them is on the v1 critical path.
-- [ ] **Q16.** Who handles the 24-hour moderation queue? (You, a small ops team, or automated + escalation?)
+- [x] **Q15.** UGC requirement audit (answered 2026-04-26 by code search):
+  - ✅ **Pre-publish moderation queue** — exists. Admin portal at `apps/creator-station/src/pages/admin/AdminDashboard.jsx`; backend at `apps/api/src/features/admin/admin.service.ts` (quest + scene `submissionStatus` flow, `notifyUser('quest:approved')` on approval).
+  - ❌ **Report Content** — does not exist. Required in mobile on every UGC item (quest, scene, creator profile).
+  - ❌ **Block User** — does not exist. Required in mobile.
+  - ❌ **EULA** — `apps/mobile/app/(auth)/login.tsx:55-57` references Terms of Service in text but there's no linked document or hosted page. Required and must explicitly prohibit objectionable content.
+- [x] **Q16.** Moderation ownership at launch (answered 2026-04-26):
+  - **At launch:** Brent personally approves every quest via admin portal (existing flow). Personal approval satisfies the proactive side of the requirement.
+  - **Post-launch:** automate moderation — see the **Automated Moderation Roadmap** section below.
 
 ### Reviewer Logistics
-- [ ] **Q17.** Geographic location for **demo seed data** so reviewers can experience the location-based quests without traveling. Safest answer: a tight cluster of waypoints near **One Apple Park Way, Cupertino** for Apple, and a separate cluster near Google's Mountain View campus for Google Play.
-- [ ] **Q18.** Demo account email and password for both stores (will live in the reviewer notes field).
+- [x] **Q17.** Demo seed data locations (answered 2026-04-26):
+  - **Apple reviewers** — cluster of 3–5 waypoints in/around **One Apple Park Way, Cupertino, CA 95014** (≈ 37.3349°N, 122.0090°W). Walkable from Apple's review-center buildings.
+  - **Google Play reviewers** — separate cluster near **Googleplex, 1600 Amphitheatre Parkway, Mountain View, CA 94043** (≈ 37.4220°N, 122.0841°W).
+- [x] **Q18.** Reviewer demo account (decided 2026-04-26): **`reviewer@urbanquestapp.com`** (we control the address); strong password to be generated when the account is created. Account must be pre-loaded with at least one free quest near each demo cluster (Q17) **and** at least one purchased premium quest so the reviewer hits the IAP-unlocked experience even on a fresh install.
+
+### Monetization sub-decisions (opened by Q8a)
+- [x] **Q8b.** Creator price tiers (answered 2026-04-26): **Free (ad-supported), $0.99, $1.99, $2.99, $4.99, $9.99.** Curated short list — quest settings UI offers these as a dropdown, not free-form pricing.
+- [x] **Q8c.** Ad SDK = **Google AdMob** via `react-native-google-mobile-ads` (answered 2026-04-26).
+- [x] **Q8d.** Ad cadence (answered 2026-04-26): max 1 interstitial per 2 scenes, 60-second minimum between any two interstitials. Skip entirely for Premium subscribers.
+- [x] **Q8e.** Paid-quest revenue split (answered 2026-04-26): **70% creator / 30% platform**, calculated after Apple/Google's 15–30% cut.
+- [x] **Q8f.** Ad revenue split (answered 2026-04-26): **100% platform at launch.** Revisit a creator share in v1.x once we have audience traction data.
+- [x] **Q8g.** Creator payouts (answered 2026-04-26): **Stripe Connect Express**, web-only flow (never inside the iOS app — anti-steering compliance).
+- [x] **Q8h.** Premium subscription (answered 2026-04-26): product ID = **`com.urbanquest.app.premium.monthly`**, $5.99/mo, **no free trial at launch**. Revisit a 7-day trial in v1.1 once we have retention data.
 
 ### Tech & Compliance
-- [ ] **Q19.** Are we using any **third-party SDKs** that collect data (analytics, crash reporting, ads, push)? Each must be declared in App Privacy and Google Data Safety, and Apple now requires SDKs on the "Privacy Manifest" list to ship a manifest.
-- [ ] **Q20.** Do we use **background location**? (Different `Info.plist` strings + a much higher review bar on both stores.)
-- [ ] **Q21.** Do we collect **health, financial, or children's data**? (Triggers extra forms and SDK restrictions on both stores.)
+- [x] **Q19.** Third-party SDK audit completed (2026-04-26). **Result: codebase is unusually clean.** No analytics, crash reporting, ads, attribution, or tracking SDKs in `apps/mobile`, `apps/api`, or `apps/creator-station`. Only third-party data services are Apple Sign In + Google Sign In (already declared in policy). Full audit + master data-type inventory in [`docs/privacy-data-inventory.md`](./privacy-data-inventory.md). One known forward gap: RevenueCat is referenced in the Privacy Policy §3 but not yet installed — will land with **A6**.
+- [x] **Q20.** Background location = **no** at launch (answered 2026-04-26). In-use only. Added `NSLocationWhenInUseUsageDescription` to `apps/mobile/app.json`. Skipped `NSLocationAlwaysAndWhenInUseUsageDescription` and Android `ACCESS_BACKGROUND_LOCATION`. Revisit for v1.x if a real user need emerges.
+- [x] **Q21.** No health, financial, or children's data (confirmed 2026-04-26). Policy correctly states 13+; app does not target children, so Apple Kids Category and Google Designed-for-Families do not apply. No HIPAA-adjacent data. Card numbers never reach our systems (RevenueCat/Apple/Google handle them).
 
 ---
 
@@ -52,45 +83,108 @@ Companion doc: [`app-store-readiness.md`](./app-store-readiness.md) — the deep
 
 ### Apple App Store (`apps/mobile` iOS build)
 - [x] **A1.** Replaced bundle ID in `apps/mobile/app.json` with `com.urbanquest.app` (2026-04-25).
-- [ ] **A2.** Add missing iOS usage strings to `apps/mobile/app.json`:
-  - `NSLocationWhenInUseUsageDescription` (the app uses location — without this it auto-rejects)
-  - `NSLocationAlwaysAndWhenInUseUsageDescription` (only if Q20 = yes)
-- [ ] **A3.** Build and host the **Privacy Policy** page (waiting on Q10).
-- [ ] **A4.** Build the **in-app account-deletion flow** + companion public URL (waiting on Q12).
-- [ ] **A5.** Implement **Report Content** + **Block User** in mobile + a moderation backend in `apps/api` (waiting on Q15/Q16).
-- [ ] **A6.** Move any digital-goods purchase flows to **StoreKit** (waiting on Q8).
+- [x] **A2.** Added `NSLocationWhenInUseUsageDescription` to `apps/mobile/app.json` (2026-04-26). `NSLocationAlwaysAndWhenInUseUsageDescription` skipped per Q20 = in-use only.
+- [x] **A3.** Privacy Policy live at https://urbanquestapp.com/privacy-policy/. Linked from mobile login screen with a required acknowledgement checkbox (`apps/mobile/app/(auth)/login.tsx`).
+- [~] **A4.** Public URL drafted in `docs/account-deletion.md` (pending WordPress publish at `urbanquestapp.com/account-deletion/`). In-app flow split out as **A19**.
+- [x] **A5.** Report Content + Block User shipped end-to-end (2026-04-26). Subtasks X4–X8 individually marked done below.
+- [x] **A6.** Monetization stack shipped end-to-end (2026-04-26) across four chunks:
+  1. **Chunk 1 — RevenueCat + Premium.** `react-native-purchases` installed; `apps/mobile/src/lib/monetization.ts` defines product IDs / entitlement / curated tier list; `apps/mobile/src/hooks/useSubscription.ts` exposes `isPremium`/`purchasePremium`/`restorePurchases` + a non-React `isPremiumNow()` for the ad gate; `apps/mobile/app/profile/premium.tsx` is the paywall (Apple-compliant copy, restore button, auto-renew disclosure); Profile screen now has a "Go Premium" card.
+  2. **Chunk 2 — Per-quest IAP + creator price-tier picker.** `apps/creator-station/src/pages/write/QuestSettings.jsx` replaces the free-text price input with a dropdown of the curated tiers; `apps/api/src/features/quests/quests.routes.ts` validates submitted prices against the allowed list (rejects arbitrary amounts); `purchaseQuestProduct(productId)` in `useSubscription` triggers the IAP; `apps/mobile/app/quest/checkout.tsx` routes paid purchases through RevenueCat then records the entitlement server-side via `POST /purchases` with the RevenueCat transaction id; backend `purchases.routes.ts` rejects paid-quest creates without a transaction id.
+  3. **Chunk 3 — AdMob + ATT + UMP.** `react-native-google-mobile-ads` + `expo-tracking-transparency` installed and configured in `app.json` with test App IDs (real IDs to come from EXPO_PUBLIC_* env at build time); `apps/mobile/src/lib/adConsent.ts` orchestrates UMP → AdMob init → ATT prompt at app boot; `apps/mobile/src/hooks/useInterstitial.ts` enforces the frequency cap (max 1 per 2 scenes, 60s minimum, gated on `isPremiumNow()`); `apps/mobile/app/quest/play.tsx` calls `maybeShowAdAtSceneBoundary()` between waypoints for free quests only.
+  4. **Chunk 4 — Stripe Connect Express.** `stripe` SDK installed in `apps/api`; `User.stripeConnectAccountId` + `stripeConnectStatus` added to Prisma; new `apps/api/src/features/payouts/payouts.routes.ts` with `GET /me/payouts` (live status sync), `POST /me/payouts/onboarding-link`, `GET /me/payouts/dashboard-link`; `apps/creator-station/src/pages/profile/CreatorProfile.jsx` Monetization card now shows real connection status with Connect/Finish-setup/Manage CTAs; revenue-share copy updated from 33% → 70% per Q8e.
 - [ ] **A7.** Audit minimum tap targets ≥ 44pt across `apps/mobile`.
 - [ ] **A8.** Verify Dynamic Type support across the app.
 - [ ] **A9.** Verify safe-area insets on notched + Dynamic-Island devices.
-- [ ] **A10.** Decide iPad support (Q7); if no, set `supportsTablet: false`; if yes, build iPad layouts and capture iPad screenshots.
-- [ ] **A11.** Capture iPhone 6.5" + 5.5" screenshots from a clean simulator with seed data (waiting on Q17).
+- [x] **A10.** iPad support disabled — `supportsTablet: false` in `apps/mobile/app.json` (2026-04-26). No iPad screenshots needed for v1.
+- [ ] **A11.** Capture **iPhone 6.5" + 5.5"** screenshots from a clean simulator. Set the simulator's location to the Cupertino cluster (Q17) so the map and waypoint UIs render with seeded data. iPad screenshots not required since A10/Q7 = iPhone-only at v1.
 - [ ] **A12.** Write the App Store description (first 3 lines = the hook), subtitle, keywords (100 chars).
-- [ ] **A13.** Complete the **App Privacy** nutrition labels in App Store Connect (waiting on Q19).
+- [ ] **A13.** Complete the **App Privacy** nutrition labels in App Store Connect. Answers prepared in [`docs/privacy-data-inventory.md`](./privacy-data-inventory.md) — every category, linked/tracking flag, and purpose pre-filled to copy in. Waiting on App Store Connect record creation.
 - [ ] **A14.** Complete the **Age Rating** questionnaire — answer for max-possible UGC content, not just current.
-- [ ] **A15.** Generate **Privacy Manifest** (`PrivacyInfo.xcprivacy`) per Apple's 2024 requirement; verify all third-party SDKs included one.
+- [x] **A15.** Privacy Manifest at `apps/mobile/ios/urbanquest/PrivacyInfo.xcprivacy` updated (2026-04-26). Required-Reason APIs preserved as Expo generated them; `NSPrivacyCollectedDataTypes` filled out for all 11 categories we collect (email, name, user ID, precise location, photos/videos, audio, other user content, product interaction, crash data, performance data, other diagnostic). `NSPrivacyTracking = false`. **Re-verify when RevenueCat (A6) and AdMob (A6) are added — AdMob will flip `NSPrivacyTracking` to `true` and add `NSPrivacyCollectedDataTypeAdvertisingData` if IDFA is requested.**
+
+### Ad-related compliance work (opened by Q8a)
+- [x] **A20.** ATT permission string added via the `react-native-google-mobile-ads` + `expo-tracking-transparency` plugin configs in `app.json` (2026-04-26).
+- [ ] **A21.** Update Privacy Policy Sections 1, 2, 4 to disclose: AdMob as a data sub-processor, IDFA collection (linked to ATT consent), ad-targeting purpose, and a link to Google's ads-personalization opt-out. Send to WordPress dev. **(Open — content task, not code.)**
+- [x] **A22.** Privacy Manifest flipped: `NSPrivacyTracking = true`, `NSPrivacyTrackingDomains` populated, `NSPrivacyCollectedDataTypeDeviceID` + `NSPrivacyCollectedDataTypeAdvertisingData` declared with `NSPrivacyCollectedDataTypePurposeThirdPartyAdvertising` (2026-04-26).
+- [ ] **A23.** Update App Store Connect App Privacy form to add "Identifiers → Device ID" Tracking = Yes. **(Open — store form, no code.)** Inputs ready in `docs/privacy-data-inventory.md`.
+- [x] **A24.** `docs/privacy-data-inventory.md` updated with AdMob/IDFA rows and a tracking-domains note (2026-04-26).
+- [x] **A25.** UMP wired in `apps/mobile/src/lib/adConsent.ts` — runs at app boot, calls `AdsConsent.requestInfoUpdate` → `AdsConsent.showForm()` for EEA/UK users; falls back to non-personalized ads if UMP fails (2026-04-26).
 - [ ] **A16.** Run a TestFlight build on **two physical iOS devices** end-to-end before submission.
-- [ ] **A17.** Fill reviewer notes with demo credentials, demo coordinates, and any non-obvious flow notes (waiting on Q17/Q18).
+- [ ] **A17.** Fill reviewer notes (App Store Connect + Play Console). Inputs ready: demo creds = `reviewer@urbanquestapp.com` + password (Q18); demo coords = Apple Park 37.3349°N / 122.0090°W (Apple) and Googleplex 37.4220°N / 122.0841°W (Google) (Q17); flow note = "set simulator/device location to the coords above, sign in with the demo account, tap any waypoint pin → start quest. The pre-purchased premium quest is in the 'My Quests' tab and demonstrates the IAP-unlocked playback path."
+- [x] **A18.** `expo-location` shipped (2026-04-26).
+  - Installed `expo-location ~19.0.8` via `npx expo install`.
+  - Registered the **expo-location config plugin** in `apps/mobile/app.json` with our specific `locationWhenInUsePermission` purpose string and `isIosBackgroundLocationEnabled: false` / `isAndroidBackgroundLocationEnabled: false` (matches Q20). Removed the manual `NSLocationWhenInUseUsageDescription` from `infoPlist` so the plugin is the single source of truth.
+  - Added `apps/mobile/src/hooks/useLocationTracking.ts` — requests foreground permission once on mount, then `Location.watchPositionAsync` (10m / 5s) piping coordinates into `useLocationStore.setCurrentLocation`. Mounted from `apps/mobile/app/(tabs)/_layout.tsx` so tracking starts when the user reaches the main app and tears down on unmount.
+  - Replaced the **fake** permission flow in `apps/mobile/app/(auth)/onboarding.tsx` (which used to set `granted/denied` based on which button was tapped, never invoking iOS) with a real `Location.requestForegroundPermissionsAsync()` call.
+  - The privacy claim — declared in `app.json`, the live Privacy Policy, and the App Privacy summary — is now consistent with what the app actually does.
+- [x] **A19.** In-app account deletion flow shipped (2026-04-26).
+  - Backend: `usersService.delete` (`apps/api/src/features/users/users.service.ts`) now anonymizes the user record in a transaction — drops Reviews, Purchases, ScoutedWaypoints, and draft/archived Quests; keeps published Quests with the user row anonymized so author FKs stay valid. Added `deletedAt` field to Prisma User; `findById`/`findByEmail`/`findByProvider` now treat deleted users as non-existent so stale tokens don't see ghost data.
+  - Mobile API client (`apps/mobile/src/services/api.ts`): added `deleteAccount()`.
+  - Auth store (`apps/mobile/src/store/index.ts`): added `deleteAccount` action.
+  - UI: `apps/mobile/app/(tabs)/profile.tsx` now has a "Delete Account" button below Sign Out, opens a confirmation modal showing exactly what's deleted vs. retained per `docs/account-deletion.md`. Confirm → API call → routed to login.
 
 ### Google Play Store (`apps/mobile` Android build)
 - [x] **G1.** Set Android `applicationId` to `com.urbanquest.app` in `apps/mobile/app.json` (2026-04-25).
 - [ ] **G2.** Verify **target API level** meets Google's current minimum (currently API 35 / Android 15 for new submissions in 2026).
-- [ ] **G3.** Add the equivalent Android runtime permission rationales for camera, microphone, photos, **fine + coarse location**, and (if Q20 = yes) `ACCESS_BACKGROUND_LOCATION` — note: background location requires a Play Console form justifying the use case.
+- [ ] **G3.** Android runtime permissions: camera, microphone, photos, **fine + coarse location** (auto-injected once `expo-location` plugin is added per A18). `ACCESS_BACKGROUND_LOCATION` **not needed** per Q20.
 - [ ] **G4.** Build a signed **Android App Bundle (.aab)** (Play Store requires `.aab`, not `.apk`).
-- [ ] **G5.** Complete the **Data Safety** form in Play Console (parallels Apple's privacy labels but separate).
+- [ ] **G5.** Complete the **Data Safety** form in Play Console. Answers prepared in [`docs/privacy-data-inventory.md`](./privacy-data-inventory.md) — every category mapped to Google's vocabulary with shared/encrypted/deletion flags pre-filled. Waiting on Play Console listing creation.
 - [ ] **G6.** Complete the **Content Rating** questionnaire (IARC) — declare UGC if applicable (Q15).
 - [ ] **G7.** Configure **Account Deletion** in Play Console pointing to the public URL from A4.
 - [ ] **G8.** Run an **internal testing track** → **closed testing track** (Google's new policy requires 20 testers for 14 days for personal accounts before production).
 - [ ] **G9.** Capture Android phone + 7"/10" tablet screenshots from a clean emulator with seed data.
 - [ ] **G10.** Write Play Store short description (80 chars) + full description (4000 chars) + feature graphic + app icon (512×512).
-- [ ] **G11.** If using Google Play Billing, integrate the library; same anti-steering rules now relaxed in some markets but still strict in most.
+- [x] **G11.** Folded into **A6** (RevenueCat covers Google Play Billing). One SDK, both stores. Shipped 2026-04-26.
 
 ### Desktop / Mac App Store
 **N/A — Creator Station ships web-only per Q1 (answered 2026-04-25).** D1–D7 retired. Cross-cutting items (X1–X3) still apply to the web app for SEO/legal hygiene.
 
-### Cross-cutting (mobile + desktop)
+### Security follow-ups (out of v1 critical path but flagged)
+- [ ] **S1.** Apply `requireAdmin` (auth + `role='admin'` check) to the existing admin routes under `/api/admin/submissions*` in `apps/api/src/features/admin/admin.routes.ts`. Currently any unauthenticated request can hit those endpoints — pre-existing gap, not introduced by the moderation work. New `/api/admin/reports/*` endpoints already use `requireAdmin`. Fix is ~10 lines plus setting Brent's account `role='admin'` in the DB so the creator-station admin portal still works after the lockdown.
+
+### Cross-cutting (mobile + web)
 - [ ] **X1.** Single source of truth for: privacy policy, terms, account deletion, support email, company name. Reuse on every store listing.
-- [ ] **X2.** Centralize the data-collection inventory in one spot so Apple Privacy Labels, Google Data Safety, and the Privacy Policy all stay in sync.
+- [x] **X2.** Centralized data-collection inventory at [`docs/privacy-data-inventory.md`](./privacy-data-inventory.md) (2026-04-26). Single source of truth for Apple App Privacy form, Google Play Data Safety form, the live Privacy Policy, and the iOS Privacy Manifest. Has a maintenance protocol at the bottom for keeping them in sync.
 - [ ] **X3.** Decide on a release versioning convention shared across platforms (`1.0.0` everywhere is fine to start).
+- [x] **X4.** Prisma `Report` (polymorphic — entityType/entityId), `UserBlock`, plus `User.suspendedAt` and `User.bannedAt`. `db push` applied (2026-04-26).
+- [x] **X5.** Backend endpoints. User-facing: `POST /reports`, `POST/DELETE /users/:id/block`, `GET /me/blocks`. Admin: `GET/POST /admin/reports*` behind a new `requireAdmin` (JWT + role='admin') hook. Living in `apps/api/src/features/moderation/`.
+- [x] **X6.** Report sheet at `apps/mobile/src/components/moderation/ReportSheet.tsx` with all 9 reason categories + free-text details, exposed via `ContentMenu` (overflow ⋯ in the quest-detail header). Reportable entity scope: quest, scene, review, user (waypoint excluded — covered by reporting the parent quest).
+- [x] **X7.** Block creator wired into `ContentMenu` → confirmation alert → `api.blockUser`. Backend `getQuests` now accepts a viewer ID and filters out blocked-author quests + always filters banned/deleted authors. Quest `/public` endpoint reads the JWT (when present) so anonymous and authenticated requests both work.
+- [x] **X8.** Admin Dashboard tab switcher (Submissions ↔ Reports) with new `ReportsTab` component. Pending queue (oldest-first for SLA fairness), 24h SLA badge, urgent flag for sexual_minors / violence / illegal categories. Detail panel offers all four resolution actions: Dismiss / Remove content / Suspend user / Ban user, with optional internal notes.
+- [x] **X9.** Terms & Conditions (incl. Apple EULA pass-through in Section 15) live at https://urbanquestapp.com/terms-conditions/. Linked from mobile login screen with a required acknowledgement checkbox (`apps/mobile/app/(auth)/login.tsx`). _Outstanding for full UGC compliance: explicit "no objectionable content" clause for the user-generated quest content. Today's terms cover safety/IP but don't yet ban harassment/hate/etc. by users — see X9a._
+- [~] **X9a.** Drafted in `docs/terms-conditions.md` Section 8 + Section 9 (full Prohibited Content & Conduct list and 24h moderation/reporting language). **Pending:** Brent updates the live WordPress page at https://urbanquestapp.com/terms-conditions/ from the corrected file.
+- [ ] **X10.** Add the same Terms + Privacy acknowledgement checkbox to creator-station signup (`apps/creator-station`). Currently Creator Station logs in with a stored email but has no consent gate.
+
+---
+
+## Automated Moderation Roadmap (post-launch)
+
+Goal: reduce Brent's manual approval load as quest volume grows, without dropping below the Apple/Google bar. Build incrementally — each layer below cuts manual review time without removing the human-in-the-loop until quality is proven.
+
+### Phased rollout
+
+- [ ] **M1. Layer 1 — text moderation (cheapest, deploy first).** Run quest titles, descriptions, scene scripts, and creator bios through **OpenAI Moderation API** (free) at submission time. Auto-flag-for-review if any category score > 0.5; auto-reject if > 0.9. Layer in front of Brent's manual approval, never behind it at launch.
+- [ ] **M2. Layer 2 — image moderation.** Run waypoint cover images and scene images through **Google Cloud Vision SafeSearch** or **AWS Rekognition Content Moderation**. Same threshold pattern as M1. (Cost: ~$1.50 per 1k images.)
+- [ ] **M3. Layer 3 — audio moderation.** AI-narrated audio (TTS) → moderate the source text upstream of TTS, no separate audio scan needed. Creator-uploaded audio → transcribe with Whisper → run transcription through Moderation API. (Most cost-effective path.)
+- [ ] **M4. Layer 4 — creator trust score.** Each creator gets a score (0–100) starting at 50. Clean approvals raise it, reports and rejections lower it. Above 80 = auto-approve text-only changes (still review media). Below 30 = block from publishing pending review. Saves the most reviewer time and is the standard pattern (see Roblox, Twitch UGC).
+- [ ] **M5. Layer 5 — duplicate / repost detection.** Hash quest titles and descriptions; flag near-duplicates submitted by different creators (common spam vector).
+- [ ] **M6. Layer 6 — geographic / IP abuse signals.** Flag bursts of submissions from the same IP, VPN-detected sources, or sanctioned regions.
+
+### Open questions for the roadmap
+
+- [ ] **Q22.** Which moderation provider stack do we want? Options: **OpenAI Moderation** (free, text only), **Google Cloud Vision SafeSearch** (text + image), **AWS Rekognition** (image + video), **Hive Moderation** (highest accuracy, paid). My recommendation: OpenAI for text + Google Vision for images at v1.1, leave video for v1.2.
+- [ ] **Q23.** What are the **auto-reject** vs. **queue-for-review** thresholds? Defaults proposed in M1 (0.5 = queue, 0.9 = reject) but want your ratio-of-false-positives tolerance.
+- [ ] **Q24.** Does a creator trust score (M4) make sense for our model, or is every quest reviewed forever? Trust scores accelerate ship cadence but add complexity.
+- [ ] **Q25.** Audit-log retention: how long do we keep `Report` records and moderation decisions for legal/compliance? US default is 1–3 years; EU GDPR pushes for shortest necessary. Default proposal: 2 years.
+- [ ] **Q26.** Do we want a **transparency report** page (e.g. `/about/moderation`) showing aggregate stats — number of reports, average resolution time, action rate? Some stores look favorably on this; not strictly required.
+- [ ] **Q27.** When does Brent stop being the sole moderator? Threshold proposal: when daily report volume exceeds 1/day for 30 consecutive days, hire/contract a moderation queue handler. Document the trigger in this doc when answered.
+
+### Roadmap tasks
+
+- [ ] **M7.** Add `moderationLog` table in Prisma to track every automated decision (entity, decision, score, model version, timestamp). Critical for tuning thresholds and for legal defensibility.
+- [ ] **M8.** Add a **moderation provider abstraction** in `apps/api/src/lib/moderation.ts` so we can swap providers without touching feature code.
+- [ ] **M9.** Background worker (BullMQ or similar) that runs moderation async on submission, then notifies the admin queue. Don't block creator submission on the moderation API call — too easy to fail open or cause UX hangs.
+- [ ] **M10.** Add admin-only **threshold-tuning UI** in creator-station so we can adjust auto-reject vs. queue thresholds without a deploy.
 
 ---
 
@@ -99,6 +193,29 @@ Companion doc: [`app-store-readiness.md`](./app-store-readiness.md) — the deep
 - [x] **Q1** (2026-04-25) — Desktop version = **web-only Creator Station**. No Mac App Store / Microsoft Store packaging. Retires Q6 and the entire Desktop section (D1–D7).
 - [x] **Q2** (2026-04-25) — iOS bundle ID = `com.urbanquest.app`. Unblocked **A1** (applied to `apps/mobile/app.json`).
 - [x] **Q3** (2026-04-25) — Android `applicationId` = `com.urbanquest.app` (matches iOS, standard practice). Unblocked **G1** (applied to `apps/mobile/app.json`).
+- [x] **Q4** (2026-04-26) — Apple Developer Program: active, Organization, **Blue Pelican Digital LLC**. Unblocks signing certs, App Store Connect record creation, TestFlight uploads.
+- [x] **Q5** (2026-04-26) — Google Play Console: active, Organization, **Blue Pelican Digital LLC**. Org account skips the 20-tester / 14-day closed-test rule.
+- [x] **Q13** (2026-04-26) — Listing company name = **Blue Pelican Digital LLC** (implicit in Q4/Q5).
+- [x] **Q8** (2026-04-26) — Monetization = **Freemium**. Puts StoreKit (A6) and Play Billing (G11) on v1 critical path. Specific products tracked in **Q8a**.
+- [x] **Q15** (2026-04-26) — UGC audit done by code search. Pre-publish moderation **exists** (admin portal). Report Content, Block User, and EULA **all missing** — added as X4–X9 + A5 on the v1 critical path.
+- [x] **Q16** (2026-04-26) — Moderation ownership: **Brent personally at launch** (existing admin portal flow). Automation roadmap added as **M1–M10** + **Q22–Q27** post-launch.
+- [x] **Q7** (2026-04-26) — iPad at v1 = no. `supportsTablet` set to `false`. Unblocked **A10**; narrowed **A11** to iPhone-only screenshots.
+- [x] **Q20** (2026-04-26) — Background location = no. In-use only. Unblocked **A2** (added iOS string), narrowed **G3**. Spawned new task **A18** to install `expo-location` and wire device GPS into `useLocationStore` (currently stubbed).
+- [x] **Q10 / Q11** (2026-04-26) — Privacy Policy + Terms & Conditions live at `urbanquestapp.com/privacy-policy/` and `/terms-conditions/`. Snapshots saved to `docs/policies/`. Mobile login screen now has a required-checkbox + tappable links via `expo-web-browser`. Unblocked **A3**, partial **X9** (EULA pass-through covered; "Prohibited Content & Conduct" clause still owed → **X9a**). Discovered that payments will be handled by **RevenueCat** per the live policies — collapsed **A6 + G11** into one integration. Discovered that creator-station has no consent gate yet → **X10**.
+- [x] **Q14** (2026-04-26) — Public support email = `support@urbanquestapp.com` (active). Corrected, paste-ready policy docs prepared in `docs/privacy-policy.md` and `docs/terms-conditions.md` for the WordPress update.
+- [x] **Q12** (2026-04-26) — Account deletion: public URL = `urbanquestapp.com/account-deletion/`, page body drafted in `docs/account-deletion.md`. In-app flow split out as **A19** (now the ⭐ next task).
+- [→] **Sent to WordPress dev (2026-04-26)** — corrected privacy policy + corrected terms & conditions delivered for publishing. **X9a** unblocks fully once dev pushes the new Sections 8 + 9 to the live page.
+- [x] **A19** (2026-04-26) — In-app account deletion implemented: anonymizing transaction in `apps/api`, schema migration adding `deletedAt`, `deleteAccount()` in mobile API client + auth store, confirmation-modal UI in `apps/mobile/app/(tabs)/profile.tsx`. Closes the most-cited rejection cause for apps with account creation.
+- [x] **A18** (2026-04-26) — `expo-location` installed and wired. Plugin registered in `app.json` with our purpose string; `useLocationTracking` hook subscribes to `watchPositionAsync` and updates `useLocationStore`; onboarding now calls the real iOS permission API. Resolves the inconsistency between declared privacy claims and actual API calls.
+- [x] **Q19 + A15 + X2** (2026-04-26) — Third-party SDK audit clean (no analytics/crash/ads/attribution SDKs). iOS Privacy Manifest (`apps/mobile/ios/urbanquest/PrivacyInfo.xcprivacy`) updated to declare all 11 collected data categories. Master inventory at `docs/privacy-data-inventory.md` is now the single source of truth for Apple App Privacy form, Google Data Safety form, live Privacy Policy, and the manifest — with a maintenance protocol so they stay in sync.
+- [x] **Q9** (2026-04-26) — IAP-only on mobile. No parallel web checkout for the same digital goods.
+- [x] **Q21** (2026-04-26) — No health/financial/children's data. Policy 13+ is correct; not in Kids Category / Designed-for-Families.
+- [x] **A5 + X4–X8** (2026-04-26) — UGC moderation shipped end-to-end. Backend: polymorphic `Report` model, `UserBlock`, `requireAdmin`-protected admin endpoints, blocked-author + banned-user filtering on the quest list. Mobile: `ReportSheet` (9 reason categories) + `ContentMenu` overflow on quest detail with Report and Block actions. Creator-station: AdminDashboard now has a **Reports tab** with oldest-first SLA queue, urgent flagging, and four resolution actions (Dismiss / Remove content / Suspend user / Ban user). Closes the biggest remaining UGC-compliance gap.
+- [x] **Q17** (2026-04-26) — Demo seed locations: Apple Park (Cupertino, ~37.3349°N/122.0090°W) for Apple reviewers, Googleplex (Mountain View, ~37.4220°N/122.0841°W) for Google. Used in A11 (screenshots) and A17 (reviewer notes).
+- [x] **Q18** (2026-04-26) — Reviewer demo account = `reviewer@urbanquestapp.com`, password to be generated when account is created, pre-loaded with at least one free quest near each demo cluster + at least one purchased premium quest. Used in A17.
+- [x] **Q8a** (2026-04-26) — Three-pronged monetization: free quests with ads, creator-priced paid quests, $5.99/mo Premium subscription (removes ads only). Sub-decisions split out as Q8b–Q8h. Significantly expands **A6** scope and adds new ad-related compliance tasks **A20–A25**.
+- [x] **Q8b–Q8h** (2026-04-26) — All monetization sub-decisions approved at recommended defaults: curated tier list (Free/$0.99/$1.99/$2.99/$4.99/$9.99), AdMob, max 1 interstitial per 2 scenes / 60s minimum, 70/30 creator-platform split on paid quests, 100% platform on ad revenue at launch, Stripe Connect Express for payouts (web-only), `com.urbanquest.app.premium.monthly` for the $5.99 sub with no free trial at launch. **A6** is fully unblocked.
+- [x] **A6 + G11 + A20 + A22 + A24 + A25** (2026-04-26) — Full monetization stack shipped across 4 chunks: RevenueCat Premium subscription + paywall, per-quest IAP wired through curated tier picker, AdMob interstitials with frequency cap + Premium gate, ATT prompt, UMP GDPR consent, iOS Privacy Manifest updated for tracking, data inventory updated, Stripe Connect Express creator payouts. Real keys/IDs (RevenueCat API keys, AdMob app IDs, Stripe secret) are read from EXPO_PUBLIC_* / STRIPE_SECRET_KEY env vars at build time — code paths run in dev with placeholders / test IDs.
 
 ---
 

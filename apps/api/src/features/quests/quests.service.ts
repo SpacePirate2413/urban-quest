@@ -30,6 +30,8 @@ export interface QuestFilters {
   minPrice?: number;
   maxPrice?: number;
   authorId?: string;
+  /** When set, excludes quests authored by users this viewer has blocked. */
+  viewerId?: string;
 }
 
 const questInclude = {
@@ -87,6 +89,24 @@ export async function getQuests(filters: QuestFilters = {}, limit = 50, offset =
     if (filters.maxPrice !== undefined) where.price.lte = filters.maxPrice;
   }
 
+  // Hide content authored by banned/deleted users (defense in depth — ban also
+  // unpublishes their quests, but a stale row shouldn't slip through). Hide
+  // anything authored by users this viewer has explicitly blocked.
+  const authorWhere: Prisma.UserWhereInput = {
+    bannedAt: null,
+    deletedAt: null,
+  };
+  if (filters.viewerId) {
+    const blocked = await prisma.userBlock.findMany({
+      where: { blockerId: filters.viewerId },
+      select: { blockedId: true },
+    });
+    if (blocked.length) {
+      authorWhere.id = { notIn: blocked.map((b) => b.blockedId) };
+    }
+  }
+  where.author = authorWhere;
+
   const [quests, total] = await Promise.all([
     prisma.quest.findMany({
       where,
@@ -116,7 +136,11 @@ export async function getQuests(filters: QuestFilters = {}, limit = 50, offset =
   };
 }
 
-export async function getPublishedQuests(filters: Omit<QuestFilters, 'status'> = {}, limit = 50, offset = 0) {
+export async function getPublishedQuests(
+  filters: Omit<QuestFilters, 'status'> = {},
+  limit = 50,
+  offset = 0,
+) {
   return getQuests({ ...filters, status: 'published' }, limit, offset);
 }
 

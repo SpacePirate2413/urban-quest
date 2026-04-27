@@ -1,3 +1,4 @@
+import { ContentMenu } from '@/src/components/moderation/ContentMenu';
 import { useQuestStore } from '@/src/store';
 import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -119,6 +120,17 @@ export default function QuestDetailScreen() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Text style={styles.backButtonText}>←</Text>
         </TouchableOpacity>
+
+        <View style={styles.menuButton}>
+          <ContentMenu
+            entityType="quest"
+            entityId={quest.id}
+            entityLabel={quest.title}
+            authorId={quest.authorId || undefined}
+            authorName={quest.authorUsername}
+            onBlocked={() => router.back()}
+          />
+        </View>
 
         <View style={styles.content}>
           <View style={styles.header}>
@@ -312,6 +324,11 @@ const styles = StyleSheet.create({
   backButtonText: {
     color: Colors.textPrimary,
     fontSize: 24,
+  },
+  menuButton: {
+    position: 'absolute',
+    top: 50,
+    right: Spacing.lg,
   },
   content: {
     padding: Spacing.lg,

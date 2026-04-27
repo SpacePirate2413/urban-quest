@@ -2,9 +2,13 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 
+const ALLOWED_PRICE_TIERS = [0, 0.99, 1.99, 2.99, 4.99, 9.99] as const;
+
 const purchaseSchema = z.object({
   questId: z.string(),
-  paymentMethod: z.enum(['apple_pay', 'google_pay', 'card']).optional(),
+  // Set when the purchase went through Apple/Google IAP via RevenueCat.
+  // Recorded for reconciliation against the RevenueCat webhook (follow-up).
+  revenueCatTransactionId: z.string().optional(),
 });
 
 const progressSchema = z.object({
@@ -63,7 +67,7 @@ export async function purchaseRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid input', details: parsed.error.errors });
     }
 
-    const { questId, paymentMethod } = parsed.data;
+    const { questId, revenueCatTransactionId } = parsed.data;
 
     // Check if already purchased
     const existing = await prisma.purchase.findUnique({
@@ -84,14 +88,22 @@ export async function purchaseRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Quest is not available for purchase' });
     }
 
-    // For paid quests, you'd integrate with Stripe here
-    // For now, we'll just create the purchase record
+    // Paid quests must come with a RevenueCat transaction id (proof the IAP
+    // actually completed). The webhook (follow-up task) is the canonical source
+    // of truth for refunds/revocations; this row is created up front for fast
+    // ownership checks on the next screen.
+    if (quest.price > 0 && !revenueCatTransactionId) {
+      return reply
+        .status(402)
+        .send({ error: 'Purchase requires an in-app payment.' });
+    }
+
     const purchase = await prisma.purchase.create({
       data: {
         userId,
         questId,
         amount: quest.price,
-        paymentMethod: quest.price > 0 ? paymentMethod : null,
+        paymentMethod: quest.price > 0 ? 'apple_pay' : null,
         status: 'completed',
       },
       include: {

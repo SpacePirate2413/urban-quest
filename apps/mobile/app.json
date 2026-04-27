@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.urbanquest.app",
       "infoPlist": {
         "NSCameraUsageDescription": "Urban Quest needs camera access to take photos and videos for waypoint scouting.",
@@ -44,6 +44,28 @@
           "dark": {
             "backgroundColor": "#000000"
           }
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Urban Quest uses your location while the app is open to detect when you reach quest waypoints and to anchor scouted waypoints to the real world.",
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false
+        }
+      ],
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511",
+          "userTrackingUsageDescription": "Urban Quest uses your ad ID to show ads in free quests. Granting permission lets us show ads that are actually relevant; if you decline, you'll still see ads, just less targeted ones."
+        }
+      ],
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "Urban Quest uses your ad ID to show ads in free quests. Granting permission lets us show ads that are actually relevant; if you decline, you'll still see ads, just less targeted ones."
         }
       ]
     ],

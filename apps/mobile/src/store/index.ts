@@ -25,6 +25,7 @@ interface AuthState {
   setAvatar: (url: string, type: 'custom' | 'preset' | 'google' | 'apple') => void;
   completeOnboarding: () => void;
   logout: () => void;
+  deleteAccount: () => Promise<void>;
 }
 
 interface QuestState {
@@ -160,6 +161,15 @@ export const useAuthStore = create<AuthState>((set) => ({
     }),
   logout: async () => {
     await api.logout();
+    set({
+      isAuthenticated: false,
+      isOnboarding: false,
+      onboardingStep: 'login',
+      user: null,
+    });
+  },
+  deleteAccount: async () => {
+    await api.deleteAccount();
     set({
       isAuthenticated: false,
       isOnboarding: false,

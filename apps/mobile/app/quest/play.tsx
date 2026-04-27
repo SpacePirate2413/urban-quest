@@ -4,6 +4,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
 import { usePlaybackStore, useQuestStore } from '@/src/store';
 import { api } from '@/src/services/api';
+import { useInterstitial } from '@/src/hooks/useInterstitial';
 import { Quest, QuestStatus, Waypoint, Scene, Question, Choice } from '@/src/types';
 
 function NavigationView({ waypoint, onArrived }: { waypoint: Waypoint; onArrived: () => void }) {
@@ -256,6 +257,7 @@ export default function PlayScreen() {
   const [phase, setPhase] = useState<'navigate' | 'scene' | 'question' | 'complete'>('navigate');
   const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const { maybeShowAdAtSceneBoundary } = useInterstitial();
   const [startedAt] = useState(new Date());
 
   useEffect(() => {
@@ -393,8 +395,15 @@ export default function PlayScreen() {
     }
   };
 
-  const moveToNextWaypoint = () => {
+  const moveToNextWaypoint = async () => {
     if (currentWaypointIndex < quest.waypoints.length - 1) {
+      // Free-quest ad check: at most 1 interstitial per 2 scenes, 60s cap,
+      // skipped for Premium subscribers. Awaits the ad's close so we don't
+      // navigate to the next waypoint behind the ad sheet.
+      if (quest.isFree) {
+        await maybeShowAdAtSceneBoundary();
+      }
+
       const nextIndex = currentWaypointIndex + 1;
       setCurrentWaypointIndex(nextIndex);
       setCurrentSceneIndex(0);

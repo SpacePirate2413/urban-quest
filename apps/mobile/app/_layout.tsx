@@ -6,7 +6,13 @@ import { Text, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { initializeAdStack } from '@/src/lib/adConsent';
+import { configureRevenueCat } from '@/src/hooks/useSubscription';
 import { Colors, Typography } from '@/src/theme/theme';
+
+configureRevenueCat();
+// Fire-and-forget: AdMob + UMP + ATT bootstrap. Doesn't block app render.
+initializeAdStack();
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -44,6 +50,7 @@ export default function RootLayout() {
         <Stack.Screen name="quest/[id]" options={{ presentation: 'card' }} />
         <Stack.Screen name="quest/checkout" options={{ presentation: 'modal' }} />
         <Stack.Screen name="quest/play" options={{ presentation: 'fullScreenModal', gestureEnabled: false }} />
+        <Stack.Screen name="profile/premium" options={{ presentation: 'modal' }} />
       </Stack>
       <StatusBar style="light" />
     </ThemeProvider>

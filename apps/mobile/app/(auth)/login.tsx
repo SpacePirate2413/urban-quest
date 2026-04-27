@@ -1,15 +1,31 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { router } from 'expo-router';
-import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
+import React, { useState } from 'react';
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAuthStore } from '@/src/store';
+import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
+
+const PRIVACY_POLICY_URL = 'https://urbanquestapp.com/privacy-policy/';
+const TERMS_URL = 'https://urbanquestapp.com/terms-conditions/';
 
 export default function LoginScreen() {
   const { login } = useAuthStore();
+  const [accepted, setAccepted] = useState(false);
 
   const handleLogin = (provider: 'apple' | 'google') => {
+    if (!accepted) {
+      Alert.alert(
+        'Please review our policies',
+        'You must agree to the Terms & Conditions and Privacy Policy before continuing.',
+      );
+      return;
+    }
     login(provider);
     router.push('/(auth)/onboarding');
+  };
+
+  const openLink = (url: string) => {
+    WebBrowser.openBrowserAsync(url);
   };
 
   return (
@@ -30,31 +46,52 @@ export default function LoginScreen() {
         </View>
       </View>
 
-      <View style={styles.buttonContainer}>
+      <View style={styles.bottomContainer}>
         <TouchableOpacity
-          style={[styles.button, styles.appleButton]}
-          onPress={() => handleLogin('apple')}
+          style={styles.consentRow}
+          onPress={() => setAccepted((prev) => !prev)}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: accepted }}
+          accessibilityLabel="I agree to the Terms and Conditions and Privacy Policy"
         >
-          <Text style={styles.appleIcon}>🍎</Text>
-          <Text style={[Typography.body, styles.appleButtonText]}>
-            Sign in with Apple
+          <View style={[styles.checkbox, accepted && styles.checkboxChecked]}>
+            {accepted && <Text style={styles.checkboxMark}>✓</Text>}
+          </View>
+          <Text style={[Typography.caption, styles.consentText]}>
+            I agree to the{' '}
+            <Text style={styles.link} onPress={() => openLink(TERMS_URL)}>
+              Terms &amp; Conditions
+            </Text>{' '}
+            and{' '}
+            <Text style={styles.link} onPress={() => openLink(PRIVACY_POLICY_URL)}>
+              Privacy Policy
+            </Text>
+            .
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.button, styles.googleButton]}
-          onPress={() => handleLogin('google')}
-        >
-          <Text style={styles.googleIcon}>G</Text>
-          <Text style={[Typography.body, styles.googleButtonText]}>
-            Sign in with Google
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity
+            style={[styles.button, styles.appleButton, !accepted && styles.buttonDisabled]}
+            onPress={() => handleLogin('apple')}
+            disabled={!accepted}
+            accessibilityState={{ disabled: !accepted }}
+          >
+            <Text style={styles.appleIcon}>🍎</Text>
+            <Text style={[Typography.body, styles.appleButtonText]}>Sign in with Apple</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.button, styles.googleButton, !accepted && styles.buttonDisabled]}
+            onPress={() => handleLogin('google')}
+            disabled={!accepted}
+            accessibilityState={{ disabled: !accepted }}
+          >
+            <Text style={styles.googleIcon}>G</Text>
+            <Text style={[Typography.body, styles.googleButtonText]}>Sign in with Google</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-
-      <Text style={[Typography.caption, styles.terms]}>
-        By signing in, you agree to our Terms of Service and Privacy Policy
-      </Text>
     </View>
   );
 }
@@ -89,6 +126,46 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: Colors.accentYellow,
   },
+  bottomContainer: {
+    gap: Spacing.md,
+  },
+  consentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.xs,
+    minHeight: 44,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  checkboxChecked: {
+    backgroundColor: Colors.accentYellow,
+    borderColor: Colors.accentYellow,
+  },
+  checkboxMark: {
+    color: '#000000',
+    fontSize: 14,
+    fontWeight: 'bold',
+    lineHeight: 16,
+  },
+  consentText: {
+    flex: 1,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  link: {
+    color: Colors.accentYellow,
+    textDecorationLine: 'underline',
+  },
   buttonContainer: {
     gap: Spacing.md,
   },
@@ -99,6 +176,9 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     borderRadius: 12,
     gap: Spacing.sm,
+  },
+  buttonDisabled: {
+    opacity: 0.45,
   },
   appleButton: {
     backgroundColor: '#FFFFFF',
@@ -123,10 +203,5 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: Colors.accentYellow,
-  },
-  terms: {
-    textAlign: 'center',
-    marginTop: Spacing.lg,
-    color: Colors.textSecondary,
   },
 });

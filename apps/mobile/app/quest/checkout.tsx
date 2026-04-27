@@ -5,6 +5,8 @@ import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
 import { useQuestStore } from '@/src/store';
 import { api } from '@/src/services/api';
 import { Quest } from '@/src/types';
+import { tierFromPrice } from '@/src/lib/monetization';
+import { purchaseQuestProduct } from '@/src/hooks/useSubscription';
 
 export default function CheckoutScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -88,21 +90,33 @@ export default function CheckoutScreen() {
   }
 
   const handlePurchase = async () => {
-    if (!quest.isFree) {
-      Alert.alert(
-        'Payment Coming Soon',
-        'Paid quest purchases are not yet available. Only free quests can be started at this time.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
     setIsProcessing(true);
     try {
-      await purchaseQuest(quest.id);
+      // Free quest — record the start without going through IAP.
+      if (quest.isFree) {
+        await purchaseQuest(quest.id);
+        router.replace(`/quest/play?id=${quest.id}`);
+        return;
+      }
+
+      // Paid quest — route through RevenueCat / StoreKit / Play Billing.
+      const tier = tierFromPrice(quest.price);
+      if (!tier.productId) {
+        Alert.alert('Unavailable', 'This quest cannot be purchased right now.');
+        return;
+      }
+      const { cancelled, transactionIdentifier } = await purchaseQuestProduct(
+        tier.productId,
+      );
+      if (cancelled) return; // user dismissed the IAP sheet — no-op
+
+      // Record the entitlement on our backend so we can resolve "owned" without
+      // re-querying RevenueCat on every screen. The webhook (follow-up task)
+      // will keep this canonical for refunds and revocations.
+      await api.purchaseQuest(quest.id, transactionIdentifier ?? undefined);
       router.replace(`/quest/play?id=${quest.id}`);
-    } catch (err) {
-      Alert.alert('Error', 'Failed to start quest. Please try again.');
+    } catch (err: any) {
+      Alert.alert('Purchase failed', err?.message ?? 'Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -156,7 +170,7 @@ export default function CheckoutScreen() {
             {!quest.isFree && (
               <View style={styles.summaryRow}>
                 <Text style={[Typography.caption, { color: Colors.textSecondary }]}>
-                  Payment integration coming soon
+                  Charged via your Apple ID or Google account
                 </Text>
               </View>
             )}
@@ -179,7 +193,7 @@ export default function CheckoutScreen() {
 
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.purchaseButton, (isProcessing || !quest.isFree) && styles.purchaseButtonDisabled]}
+          style={[styles.purchaseButton, isProcessing && styles.purchaseButtonDisabled]}
           onPress={handlePurchase}
           disabled={isProcessing}
         >

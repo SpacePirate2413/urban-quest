@@ -13,6 +13,15 @@ const ALLOWED_AUDIO = ['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'a
 const ALLOWED_VIDEO = ['video/mp4', 'video/quicktime', 'video/webm'];
 const ALLOWED_TYPES = [...ALLOWED_AUDIO, ...ALLOWED_VIDEO];
 
+// Apple/Google IAP prices must come from a fixed tier list. Creators can pick
+// any of these, but cannot set arbitrary amounts. (See Q8b in docs/Questions-Left.md.)
+const ALLOWED_PRICE_TIERS = [0, 0.99, 1.99, 2.99, 4.99, 9.99] as const;
+const priceTierSchema = z
+  .number()
+  .refine((p) => ALLOWED_PRICE_TIERS.some((t) => Math.abs(t - p) < 0.001), {
+    message: `Price must be one of: ${ALLOWED_PRICE_TIERS.join(', ')}`,
+  });
+
 const createQuestSchema = z.object({
   title: z.string().min(1).max(100),
   description: z.string().optional(),
@@ -20,7 +29,7 @@ const createQuestSchema = z.object({
   genre: z.string().optional(),
   difficulty: z.enum(['easy', 'medium', 'hard', 'expert']).optional(),
   ageRating: z.enum(['E', 'T', 'M']).optional(),
-  price: z.number().min(0).optional(),
+  price: priceTierSchema.optional(),
   coverImage: z.string().url().optional(),
   usesAI: z.boolean().optional(),
   narratorVoiceId: z.string().optional(),
@@ -51,17 +60,33 @@ const sceneSchema = z.object({
 });
 
 export async function questRoutes(app: FastifyInstance) {
-  // Get all published quests (public)
-  app.get('/public', async (request, reply) => {
+  // Get all published quests (public). If the request carries a valid JWT we use the
+  // viewer ID to filter out quests authored by users they've blocked. Anonymous requests
+  // get the unfiltered public list (minus banned/deleted authors, which are filtered
+  // unconditionally inside the service).
+  app.get('/public', async (request) => {
     const { genre, difficulty, city, minPrice, maxPrice, limit, offset } = request.query as any;
-    
-    const result = await questService.getPublishedQuests(
-      { genre, difficulty, city, minPrice: minPrice ? Number(minPrice) : undefined, maxPrice: maxPrice ? Number(maxPrice) : undefined },
+
+    let viewerId: string | undefined;
+    try {
+      await request.jwtVerify();
+      viewerId = (request.user as { id: string } | undefined)?.id;
+    } catch {
+      // No token / invalid token — treat as anonymous viewer. Don't fail the request.
+    }
+
+    return questService.getPublishedQuests(
+      {
+        genre,
+        difficulty,
+        city,
+        minPrice: minPrice ? Number(minPrice) : undefined,
+        maxPrice: maxPrice ? Number(maxPrice) : undefined,
+        viewerId,
+      },
       limit ? Number(limit) : 50,
-      offset ? Number(offset) : 0
+      offset ? Number(offset) : 0,
     );
-    
-    return result;
   });
 
   // Get single quest (public for published, auth for drafts)

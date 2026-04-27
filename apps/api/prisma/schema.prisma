@@ -16,19 +16,32 @@ model User {
   genres    String?  // comma-separated genre list
   birthdate DateTime?
   role      String   @default("player") // player | writer | admin
-  
+
   provider   String // GOOGLE | APPLE | DEV
   providerId String
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+  deletedAt DateTime?
+  suspendedAt DateTime?
+  bannedAt    DateTime?
+
+  // Stripe Connect Express — for creator payouts on paid quest revenue.
+  // `accountId` is the Stripe acct_xxx; `status` mirrors the most recent
+  // onboarding state we observed (pending | active | restricted).
+  stripeConnectAccountId String?
+  stripeConnectStatus    String? @default("pending")
+
   // Relations
   quests         Quest[]
   purchases      Purchase[]
   reviews        Review[]
   scoutedWaypoints ScoutedWaypoint[]
-  
+  reportsFiled    Report[]    @relation("ReportsByReporter")
+  reportsResolved Report[]    @relation("ReportsByResolver")
+  blocking        UserBlock[] @relation("Blocker")
+  blockedBy       UserBlock[] @relation("Blocked")
+
   @@unique([provider, providerId])
   @@index([email])
 }
@@ -161,6 +174,53 @@ model Review {
   
   @@unique([userId, questId])
   @@index([questId])
+}
+
+// Polymorphic moderation report. entityType is one of: 'quest' | 'scene' | 'review' | 'user'.
+// entityId points at the corresponding row. We don't FK because Prisma doesn't support
+// polymorphic relations cleanly; service code must validate the target exists.
+model Report {
+  id        String @id @default(cuid())
+
+  reporterId String
+  reporter   User   @relation("ReportsByReporter", fields: [reporterId], references: [id])
+
+  entityType String // quest | scene | review | user
+  entityId   String
+
+  reason  String  // spam | harassment | sexual_minors | hate | violence | illegal | ip | scam | impersonation | other
+  details String? // free-text additional context from the reporter
+
+  status String @default("pending") // pending | resolved | dismissed
+
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolvedBy   User?     @relation("ReportsByResolver", fields: [resolvedById], references: [id])
+  action       String?   // dismiss | remove_content | suspend_user | ban_user
+  notes        String?   // admin notes on resolution
+
+  createdAt DateTime @default(now())
+
+  @@index([status])
+  @@index([entityType, entityId])
+  @@index([reporterId])
+  @@index([createdAt])
+}
+
+model UserBlock {
+  id String @id @default(cuid())
+
+  blockerId String
+  blocker   User   @relation("Blocker", fields: [blockerId], references: [id])
+
+  blockedId String
+  blocked   User   @relation("Blocked", fields: [blockedId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
 }
 
 model ScoutedWaypoint {

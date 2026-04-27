@@ -1,11 +1,37 @@
+import { useSubscription } from '@/src/hooks/useSubscription';
 import { useAuthStore } from '@/src/store';
 import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
 import { router } from 'expo-router';
-import React from 'react';
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 export default function ProfileScreen() {
-  const { user, isLoading, isAuthenticated, logout } = useAuthStore();
+  const { user, isLoading, isAuthenticated, logout, deleteAccount } = useAuthStore();
+  const { isPremium } = useSubscription();
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+    try {
+      await deleteAccount();
+      setDeleteModalVisible(false);
+      router.replace('/(auth)/login');
+    } catch (err: any) {
+      setIsDeleting(false);
+      Alert.alert('Could not delete account', err?.message ?? 'Please try again later.');
+    }
+  };
 
   if (isLoading) {
     return (
@@ -83,6 +109,23 @@ export default function ProfileScreen() {
         </View>
       </View>
 
+      <TouchableOpacity
+        style={[styles.premiumCard, isPremium && styles.premiumCardActive]}
+        onPress={() => router.push('/profile/premium')}
+        accessibilityRole="button"
+      >
+        <Text style={styles.premiumIcon}>⭐</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={[Typography.body, styles.premiumTitle]}>
+            {isPremium ? 'Premium active' : 'Go Premium'}
+          </Text>
+          <Text style={[Typography.caption, styles.premiumSubtitle]}>
+            {isPremium ? 'Ads are off — manage in your device settings' : '$5.99/mo · removes ads'}
+          </Text>
+        </View>
+        <Text style={styles.premiumArrow}>›</Text>
+      </TouchableOpacity>
+
       <View style={styles.menuSection}>
         {menuItems.map((item, index) => (
           <TouchableOpacity
@@ -106,9 +149,83 @@ export default function ProfileScreen() {
         <Text style={styles.logoutText}>Sign Out</Text>
       </TouchableOpacity>
 
+      <TouchableOpacity
+        style={styles.deleteButton}
+        onPress={() => setDeleteModalVisible(true)}
+        accessibilityLabel="Delete account"
+      >
+        <Text style={styles.deleteText}>Delete Account</Text>
+      </TouchableOpacity>
+
       <Text style={[Typography.caption, { textAlign: 'center', color: Colors.textSecondary, marginTop: Spacing.lg }]}>
         Urban Quest v1.0.0
       </Text>
+
+      <Modal
+        visible={deleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !isDeleting && setDeleteModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={[Typography.headerMedium, styles.modalTitle]}>Delete your account?</Text>
+            <Text style={[Typography.body, styles.modalBody]}>
+              This will permanently delete your Urban Quest account.
+            </Text>
+
+            <Text style={[Typography.caption, styles.modalSectionLabel]}>What gets deleted</Text>
+            <Text style={[Typography.caption, styles.modalBullet]}>
+              • Your profile, sign-in link, and personal info
+            </Text>
+            <Text style={[Typography.caption, styles.modalBullet]}>
+              • Your quest progress, completed quests, saved quests
+            </Text>
+            <Text style={[Typography.caption, styles.modalBullet]}>
+              • Your reviews, ratings, and uploaded media
+            </Text>
+            <Text style={[Typography.caption, styles.modalBullet]}>
+              • Quests you authored that are still in draft
+            </Text>
+
+            <Text style={[Typography.caption, styles.modalSectionLabel]}>What may be retained</Text>
+            <Text style={[Typography.caption, styles.modalBullet]}>
+              • Financial records (purchase history, refunds) for tax compliance — up to 7 years
+            </Text>
+            <Text style={[Typography.caption, styles.modalBullet]}>
+              • Published quests you authored, with your name removed
+            </Text>
+            <Text style={[Typography.caption, styles.modalBullet]}>
+              • Anonymized backups, fully purged within 30 days
+            </Text>
+
+            <Text style={[Typography.caption, styles.modalFooter]}>
+              This action cannot be undone. Once deleted, your account cannot be restored.
+            </Text>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnCancel]}
+                onPress={() => setDeleteModalVisible(false)}
+                disabled={isDeleting}
+              >
+                <Text style={styles.modalBtnCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnConfirm, isDeleting && { opacity: 0.6 }]}
+                onPress={handleDeleteAccount}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalBtnConfirmText}>Delete Account</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -188,6 +305,37 @@ const styles = StyleSheet.create({
     width: 1,
     backgroundColor: Colors.border,
   },
+  premiumCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.lg,
+    padding: Spacing.md,
+    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    borderWidth: 2,
+    borderColor: Colors.accentYellow,
+    gap: Spacing.md,
+  },
+  premiumCardActive: {
+    borderColor: Colors.cyan,
+    backgroundColor: Colors.accentYellow + '15',
+  },
+  premiumIcon: {
+    fontSize: 28,
+  },
+  premiumTitle: {
+    color: Colors.accentYellow,
+    fontWeight: '700',
+  },
+  premiumSubtitle: {
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  premiumArrow: {
+    color: Colors.accentYellow,
+    fontSize: 24,
+  },
   menuSection: {
     marginTop: Spacing.lg,
     marginHorizontal: Spacing.lg,
@@ -229,6 +377,18 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
+  deleteButton: {
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+    padding: Spacing.md,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  deleteText: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    textDecorationLine: 'underline',
+  },
   loginButton: {
     marginTop: Spacing.lg,
     backgroundColor: Colors.cyan,
@@ -242,5 +402,74 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    padding: Spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    padding: Spacing.lg,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+  },
+  modalTitle: {
+    color: Colors.hotPink,
+    marginBottom: Spacing.sm,
+  },
+  modalBody: {
+    color: Colors.textPrimary,
+    marginBottom: Spacing.md,
+  },
+  modalSectionLabel: {
+    color: Colors.cyan,
+    marginTop: Spacing.sm,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    fontWeight: '700',
+  },
+  modalBullet: {
+    color: Colors.textSecondary,
+    marginBottom: 2,
+    lineHeight: 16,
+  },
+  modalFooter: {
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
+    marginTop: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginTop: Spacing.sm,
+  },
+  modalBtn: {
+    flex: 1,
+    padding: Spacing.md,
+    borderRadius: 8,
+    alignItems: 'center',
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  modalBtnCancel: {
+    backgroundColor: Colors.primaryBackground,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+  },
+  modalBtnCancelText: {
+    color: Colors.textPrimary,
+    fontWeight: '700',
+  },
+  modalBtnConfirm: {
+    backgroundColor: Colors.hotPink,
+  },
+  modalBtnConfirmText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
 });

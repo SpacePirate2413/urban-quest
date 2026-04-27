@@ -9,6 +9,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { env } from './config/env.js';
 import { adminRoutes } from './features/admin/admin.routes.js';
+import { moderationRoutes } from './features/moderation/moderation.routes.js';
+import { payoutsRoutes } from './features/payouts/payouts.routes.js';
 import { purchaseRoutes } from './features/purchases/purchases.routes.js';
 import { questRoutes } from './features/quests/quests.routes.js';
 import { reviewRoutes } from './features/reviews/reviews.routes.js';
@@ -64,6 +66,8 @@ export async function buildApp() {
   await app.register(purchaseRoutes, { prefix: '/api/purchases' });
   await app.register(reviewRoutes, { prefix: '/api/reviews' });
   await app.register(adminRoutes, { prefix: '/api/admin' });
+  await app.register(moderationRoutes, { prefix: '/api' });
+  await app.register(payoutsRoutes, { prefix: '/api' });
 
   app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
 

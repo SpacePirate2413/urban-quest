@@ -25,6 +25,13 @@ const envSchema = z.object({
   
   DEV_AUTH_BYPASS: z.enum(['true', 'false']).default('false').transform((val) => val === 'true'),
   DEV_AUTH_EMAIL: z.string().email().optional(),
+
+  // Stripe Connect Express — used for creator payouts. Test-mode keys (sk_test_*)
+  // are fine in dev. Optional in development so the app can still boot without them
+  // and the Earnings tab will surface a setup-required message.
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_CONNECT_RETURN_URL: z.string().url().default('http://localhost:5173/profile?stripe=return'),
+  STRIPE_CONNECT_REFRESH_URL: z.string().url().default('http://localhost:5173/profile?stripe=refresh'),
 }).refine(
   (data) => {
     if (data.DEV_AUTH_BYPASS && data.NODE_ENV !== 'development') {

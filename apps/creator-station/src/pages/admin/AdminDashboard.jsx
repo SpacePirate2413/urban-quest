@@ -13,6 +13,7 @@ import {
     Loader2,
     Mail,
     Shield,
+    ShieldAlert,
     Sparkles,
     Tag,
     User,
@@ -22,10 +23,12 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { Badge, Button, Card, Textarea } from '../../components/ui';
 import { api } from '../../services/api';
+import { ReportsTab } from './ReportsTab';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export function AdminDashboard() {
+  const [activeTab, setActiveTab] = useState('submissions'); // 'submissions' | 'reports'
   const [questSubmissions, setQuestSubmissions] = useState([]);
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -170,6 +173,32 @@ export function AdminDashboard() {
       </header>
 
       <div className="p-6 max-w-7xl mx-auto">
+        <div className="flex gap-2 mb-6 border-b border-panel-border">
+          <button
+            onClick={() => setActiveTab('submissions')}
+            className={`px-4 py-2 font-bangers uppercase tracking-wider text-sm transition-colors flex items-center gap-2 border-b-2 -mb-px ${
+              activeTab === 'submissions'
+                ? 'text-cyan border-cyan'
+                : 'text-white/50 border-transparent hover:text-white/80'
+            }`}
+          >
+            <FileCheck className="w-4 h-4" />
+            Submissions
+          </button>
+          <button
+            onClick={() => setActiveTab('reports')}
+            className={`px-4 py-2 font-bangers uppercase tracking-wider text-sm transition-colors flex items-center gap-2 border-b-2 -mb-px ${
+              activeTab === 'reports'
+                ? 'text-orange border-orange'
+                : 'text-white/50 border-transparent hover:text-white/80'
+            }`}
+          >
+            <ShieldAlert className="w-4 h-4" />
+            Reports
+          </button>
+        </div>
+
+        {activeTab === 'reports' ? <ReportsTab /> : <>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
           <StatCard 
             icon={<BarChart3 className="w-5 h-5" />}
@@ -584,6 +613,7 @@ export function AdminDashboard() {
             </Card>
           </div>
         </div>
+        </>}
       </div>
     </div>
   );
