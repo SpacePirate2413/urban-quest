@@ -1,5 +1,6 @@
 import {
     AlertCircle,
+    AlertTriangle,
     BarChart3,
     Calendar,
     CheckCircle,
@@ -148,6 +149,7 @@ export function AdminDashboard() {
 
   const statusConfig = {
     pending: { color: 'yellow', icon: Clock, label: 'Pending' },
+    needs_re_review: { color: 'orange', icon: AlertTriangle, label: 'Re-Review' },
     approved: { color: 'green', icon: CheckCircle, label: 'Approved' },
     rejected: { color: 'pink', icon: XCircle, label: 'Rejected' },
   };
@@ -245,6 +247,7 @@ export function AdminDashboard() {
                   >
                     <option value="all">All Status</option>
                     <option value="pending">Pending</option>
+                    <option value="needs_re_review">Re-Review</option>
                     <option value="approved">Approved</option>
                     <option value="rejected">Rejected</option>
                   </select>
@@ -564,7 +567,7 @@ export function AdminDashboard() {
                       </div>
                     </div>
 
-                    {selectedQuest.submissionStatus === 'pending' ? (
+                    {(selectedQuest.submissionStatus === 'pending' || selectedQuest.submissionStatus === 'needs_re_review') ? (
                       <>
                         <Textarea
                           label="Review Notes"

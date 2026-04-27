@@ -144,14 +144,32 @@ export async function getPublishedQuests(
   return getQuests({ ...filters, status: 'published' }, limit, offset);
 }
 
+// Fields that are considered "content" — editing any of these on a published
+// quest means the changes must be re-reviewed before they go live.
+const CONTENT_FIELDS = new Set([
+  'title', 'description', 'tagline', 'genre', 'difficulty', 'ageRating',
+  'price', 'coverImage', 'usesAI', 'narratorVoiceId', 'estimatedDuration',
+]);
+
 export async function updateQuest(id: string, authorId: string, input: UpdateQuestInput) {
   // Verify ownership
   const quest = await prisma.quest.findFirst({ where: { id, authorId } });
   if (!quest) return null;
 
+  // If the quest is published (or approved and awaiting publish) and a content
+  // field changed, flag it so the creator is prompted to resubmit for review.
+  const isLive = quest.status === 'published' || quest.submissionStatus === 'approved';
+  const touchesContent = Object.keys(input).some((k) => CONTENT_FIELDS.has(k));
+  const alreadyFlagged = quest.submissionStatus === 'needs_re_review' || quest.submissionStatus === 'pending';
+
+  const data: Record<string, unknown> = { ...input };
+  if (isLive && touchesContent && !alreadyFlagged) {
+    data.submissionStatus = 'needs_re_review';
+  }
+
   return prisma.quest.update({
     where: { id },
-    data: input,
+    data,
     include: questInclude,
   });
 }
@@ -266,6 +284,10 @@ export async function addScene(questId: string, authorId: string, data: {
   });
 }
 
+const SCENE_CONTENT_FIELDS = new Set([
+  'script', 'question', 'choices', 'mediaUrl', 'mediaType',
+]);
+
 export async function updateScene(sceneId: string, authorId: string, data: Partial<{
   script: string;
   question: string;
@@ -278,8 +300,21 @@ export async function updateScene(sceneId: string, authorId: string, data: Parti
 }>) {
   const scene = await prisma.scene.findFirst({
     where: { id: sceneId, quest: { authorId } },
+    include: { quest: { select: { status: true, submissionStatus: true } } },
   });
   if (!scene) return null;
+
+  const quest = scene.quest;
+  const isLive = quest.status === 'published' || quest.submissionStatus === 'approved';
+  const touchesContent = Object.keys(data).some((k) => SCENE_CONTENT_FIELDS.has(k));
+  const alreadyFlagged = quest.submissionStatus === 'needs_re_review' || quest.submissionStatus === 'pending';
+
+  if (isLive && touchesContent && !alreadyFlagged) {
+    await prisma.quest.update({
+      where: { id: scene.questId },
+      data: { submissionStatus: 'needs_re_review' },
+    });
+  }
 
   return prisma.scene.update({ where: { id: sceneId }, data });
 }

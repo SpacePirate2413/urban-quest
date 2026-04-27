@@ -1,6 +1,7 @@
 import { ArrowLeft, CircleCheckBig, Film, MapPin, Rocket, Settings, Star, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ReReviewPrompt } from '../../components/ReReviewPrompt';
 import { Badge, Button, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui';
 import { api } from '../../services/api';
 import { useWriterStore } from '../../store/useWriterStore';
@@ -97,6 +98,8 @@ export function QuestEditor() {
           </div>
         </div>
       )}
+
+      <ReReviewPrompt questId={quest.id} />
 
       <Tabs defaultValue="settings" className="flex-1 flex flex-col overflow-hidden">
         <div className="px-6 py-3 border-b border-panel-border">

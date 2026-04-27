@@ -1,18 +1,17 @@
 import {
-  AlertCircle,
-  CheckCircle,
-  Eye,
-  FileAudio,
-  FileVideo,
-  Film,
-  Plus,
-  PlusCircle,
-  RefreshCw,
-  Send,
-  Trash2,
-  Upload,
-  Wand2,
-  X,
+    AlertCircle,
+    Eye,
+    FileAudio,
+    FileVideo,
+    Film,
+    Plus,
+    PlusCircle,
+    RefreshCw,
+    Send,
+    Trash2,
+    Upload,
+    Wand2,
+    X
 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Badge, Button, Card, Input, Modal, Select } from '../../components/ui';
@@ -338,13 +337,16 @@ export function CreateTab({ questId }) {
             variant={
               quest.submissionStatus === 'pending'
                 ? 'yellow'
-                : quest.submissionStatus === 'approved'
-                  ? 'green'
-                  : 'pink'
+                : quest.submissionStatus === 'needs_re_review'
+                  ? 'orange'
+                  : quest.submissionStatus === 'approved'
+                    ? 'green'
+                    : 'pink'
             }
             className="w-full justify-center"
           >
             {quest.submissionStatus === 'pending' && 'Pending Review'}
+            {quest.submissionStatus === 'needs_re_review' && 'Needs Re-Review'}
             {quest.submissionStatus === 'approved' && 'Approved'}
             {quest.submissionStatus === 'rejected' && 'Rejected'}
           </Badge>

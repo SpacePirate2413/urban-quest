@@ -236,10 +236,15 @@ export const useWriterStore = create((set, get) => ({
 
   updateQuest: async (questId, updates) => {
     try {
-      await api.updateQuest(questId, updates);
+      const response = await api.updateQuest(questId, updates);
+      // Merge the API response so server-set fields (e.g. submissionStatus)
+      // are reflected locally.
+      const serverFields = response
+        ? { submissionStatus: response.submissionStatus }
+        : {};
       set((state) => ({
         quests: state.quests.map((q) =>
-          q.id === questId ? { ...q, ...updates } : q
+          q.id === questId ? { ...q, ...updates, ...serverFields } : q
         ),
       }));
     } catch (err) {

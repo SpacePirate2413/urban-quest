@@ -30,7 +30,10 @@ const createQuestSchema = z.object({
   difficulty: z.enum(['easy', 'medium', 'hard', 'expert']).optional(),
   ageRating: z.enum(['E', 'T', 'M']).optional(),
   price: priceTierSchema.optional(),
-  coverImage: z.string().url().optional(),
+  coverImage: z.string().refine(
+    (val) => /^https?:\/\//.test(val) || /^data:image\//.test(val),
+    { message: 'Must be an http(s) URL or a data:image/* URI' },
+  ).optional(),
   usesAI: z.boolean().optional(),
   narratorVoiceId: z.string().optional(),
   estimatedDuration: z.number().int().positive().optional(),

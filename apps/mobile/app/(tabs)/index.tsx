@@ -20,7 +20,13 @@ import {
 function QuestCard({ quest, onPress }: { quest: Quest; onPress: () => void }) {
   return (
     <TouchableOpacity style={styles.questCard} onPress={onPress}>
-      <Image source={{ uri: quest.coverImageUrl }} style={styles.questImage} />
+      {quest.coverImageUrl ? (
+        <Image source={{ uri: quest.coverImageUrl }} style={styles.questImage} />
+      ) : (
+        <View style={[styles.questImage, { backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center' }]}>
+          <Text style={{ fontSize: 30 }}>🖼️</Text>
+        </View>
+      )}
       <View style={styles.questInfo}>
         <View style={styles.questHeader}>
           <Text style={Typography.headerMedium} numberOfLines={1}>{quest.title}</Text>
@@ -94,7 +100,13 @@ function MapView({ quests, onQuestPress, onFilterPress, activeFiltersCount }: { 
       
       {selectedQuest && (
         <TouchableOpacity style={styles.mapPreviewCard} onPress={() => onQuestPress(selectedQuest)}>
-          <Image source={{ uri: selectedQuest.coverImageUrl }} style={styles.previewImage} />
+          {selectedQuest.coverImageUrl ? (
+            <Image source={{ uri: selectedQuest.coverImageUrl }} style={styles.previewImage} />
+          ) : (
+            <View style={[styles.previewImage, { backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center' }]}>
+              <Text style={{ fontSize: 20 }}>🖼️</Text>
+            </View>
+          )}
           <View style={styles.previewInfo}>
             <Text style={Typography.headerMedium} numberOfLines={1}>{selectedQuest.title}</Text>
             <Text style={[Typography.caption, { color: Colors.textSecondary }]} numberOfLines={1}>{selectedQuest.tagline}</Text>
