@@ -302,6 +302,7 @@ export function CreateTab({ questId }) {
             const waypoint = quest.waypoints.find(wp => wp.id === scene.waypointId);
             const isSelected = scene.id === selectedSceneId;
             const media = getSceneMedia(scene.id);
+            const reviewState = sceneReviewState(scene);
 
             return (
               <Card
@@ -333,6 +334,22 @@ export function CreateTab({ questId }) {
                     </div>
                   )}
                 </div>
+
+                {reviewState && (
+                  <div
+                    className={`mt-2 rounded-md border-[1.5px] px-2 py-1.5 text-xs ${reviewState.boxClass}`}
+                  >
+                    <p className={`font-bangers uppercase tracking-wider text-[10px] ${reviewState.labelClass}`}>
+                      {reviewState.label}
+                    </p>
+                    {scene.reviewNotes && (
+                      <p className={`mt-0.5 leading-snug whitespace-pre-wrap ${reviewState.notesClass}`}>
+                        {scene.reviewNotes}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <button
                   onClick={(e) => handleUploadClick(scene.id, e)}
                   className="mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-xs font-bangers uppercase bg-panel-border/50 text-white/70 hover:bg-cyan/20 hover:text-cyan transition-all"
@@ -529,7 +546,7 @@ export function CreateTab({ questId }) {
                   onChange={(e) => handleUpdateScene('script', e.target.value)}
                   disabled={hasMedia}
                   placeholder={`Write your narrative here...\n\nThe narrator will read this text aloud to guide the player through the scene.\n\nUse vivid descriptions to set the mood and atmosphere. Include dialogue in quotes if needed.`}
-                  rows={10}
+                  rows={5}
                   className="w-full bg-input-bg border-[1.5px] border-panel-border rounded-lg px-4 py-3 text-white placeholder:text-white/40 focus:outline-none focus:border-cyan transition-colors resize-none font-courier leading-7 disabled:cursor-not-allowed"
                 />
                 {hasMedia && (
@@ -675,6 +692,29 @@ export function CreateTab({ questId }) {
       />
     </div>
   );
+}
+
+// Computes the review-status badge to render under each scene card. Returns
+// null when the scene hasn't been reviewed yet (no badge), so creators
+// see a clean editor when starting fresh.
+function sceneReviewState(scene) {
+  if (scene.mediaStatus === 'approved') {
+    return {
+      label: 'Approved',
+      boxClass: 'bg-neon-green/10 border-neon-green/40',
+      labelClass: 'text-neon-green',
+      notesClass: 'text-neon-green/80',
+    };
+  }
+  if (scene.mediaStatus === 'rejected') {
+    return {
+      label: 'Changes requested',
+      boxClass: 'bg-hot-pink/10 border-hot-pink/40',
+      labelClass: 'text-hot-pink',
+      notesClass: 'text-hot-pink/80',
+    };
+  }
+  return null;
 }
 
 function formatFileSize(bytes) {

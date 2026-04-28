@@ -83,6 +83,20 @@ class TTSService {
       return false;
     }
   }
+
+  // Lightweight progress poll while a generation is in flight. Chatterbox
+  // exposes /v1/status/progress which returns chunk progress for the
+  // currently-running TTS request. Returns null on error so callers can
+  // gracefully skip a tick.
+  async getProgress() {
+    try {
+      const response = await fetch(`${this.baseUrl}/v1/status/progress`);
+      if (!response.ok) return null;
+      return await response.json();
+    } catch {
+      return null;
+    }
+  }
 }
 
 export const ttsService = new TTSService();

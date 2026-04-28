@@ -126,6 +126,10 @@ model Scene {
   mediaUrl    String?
   mediaType   String? // audio | video
   mediaStatus String? // pending | approved | rejected
+  // Free-text feedback the admin reviewer typed when approving/rejecting
+  // this scene. Surfaces in the creator's Create tab so they know what to
+  // change before resubmitting.
+  reviewNotes String?
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

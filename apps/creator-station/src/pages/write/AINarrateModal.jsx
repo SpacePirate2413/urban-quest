@@ -51,6 +51,7 @@ export function AINarrateModal({ isOpen, onClose, questId, sceneId, onMediaGener
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [voiceControls, setVoiceControls] = useState(DEFAULT_VOICE_CONTROLS);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(null); // { percent, currentStep, eta }
   const [generatedBlob, setGeneratedBlob] = useState(null);
   const [generatedUrl, setGeneratedUrl] = useState(null);
   const [generationError, setGenerationError] = useState(null);
@@ -194,11 +195,34 @@ export function AINarrateModal({ isOpen, onClose, questId, sceneId, onMediaGener
     if (!scene?.script?.trim() || !selectedVoiceId || isGenerating) return;
     setIsGenerating(true);
     setGenerationError(null);
+    setGenerationProgress({ percent: 0, currentStep: 'Starting…', eta: null });
     if (generatedUrl) {
       URL.revokeObjectURL(generatedUrl);
       setGeneratedUrl(null);
       setGeneratedBlob(null);
     }
+
+    // Poll Chatterbox's /v1/status/progress endpoint while the synthesis
+    // request is in flight. Stop the loop once the response below resolves
+    // (the `finally` block flips `cancelled` to true).
+    let cancelled = false;
+    (async () => {
+      while (!cancelled) {
+        const progress = await ttsService.getProgress();
+        if (cancelled) return;
+        if (progress?.is_processing) {
+          setGenerationProgress({
+            percent: progress.progress_percentage ?? 0,
+            currentStep: progress.current_step || 'Synthesizing audio…',
+            currentChunk: progress.current_chunk,
+            totalChunks: progress.total_chunks,
+            eta: progress.estimated_completion ?? null,
+          });
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    })();
+
     try {
       const blob = await ttsService.generateScript(
         scene.script,
@@ -211,7 +235,9 @@ export function AINarrateModal({ isOpen, onClose, questId, sceneId, onMediaGener
     } catch (err) {
       setGenerationError(err.message || 'Generation failed.');
     } finally {
+      cancelled = true;
       setIsGenerating(false);
+      setGenerationProgress(null);
     }
   };
 
@@ -381,6 +407,32 @@ export function AINarrateModal({ isOpen, onClose, questId, sceneId, onMediaGener
             </>
           )}
         </Button>
+
+        {isGenerating && generationProgress && (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-[10px] text-white/70">
+              <span>
+                {generationProgress.currentStep}
+                {generationProgress.totalChunks > 1 && (
+                  <span className="text-white/40 ml-1">
+                    ({generationProgress.currentChunk}/{generationProgress.totalChunks})
+                  </span>
+                )}
+              </span>
+              <span className="font-bangers text-cyan">
+                {Math.max(0, Math.min(100, Math.round(generationProgress.percent)))}%
+              </span>
+            </div>
+            <div className="w-full h-1.5 bg-input-bg rounded-full overflow-hidden">
+              <div
+                className="h-full bg-cyan transition-all duration-300"
+                style={{
+                  width: `${Math.max(0, Math.min(100, generationProgress.percent))}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
 
         {generationError && (
           <Card className="p-3 border-hot-pink/40 bg-hot-pink/10">

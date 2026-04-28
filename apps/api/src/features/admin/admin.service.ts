@@ -68,9 +68,13 @@ export async function getSubmissions(filters: SubmissionFilters = {}, limit = 50
       writerAvatar: quest.author.avatarUrl,
       sceneCount: quest.scenes.length,
       updatedAt: quest.updatedAt.toISOString(),
-      scenes: quest.scenes.map(scene => ({
+      // sceneIndex is the *display* index (0-based). The legacy `orderIndex`
+      // column starts at 1 because of an off-by-one in addScene; using the
+      // array position here keeps the admin UI's "Scene {sceneIndex + 1}"
+      // numbering aligned with the creator's "Scene 1, 2, 3" expectation.
+      scenes: quest.scenes.map((scene, i) => ({
         id: scene.id,
-        sceneIndex: scene.orderIndex,
+        sceneIndex: i,
         waypointName: scene.waypoint?.name || null,
         mediaType: scene.mediaType,
         mediaUrl: scene.mediaUrl,
@@ -95,6 +99,15 @@ export async function reviewQuestSubmission(
   });
   if (!quest) return null;
 
+  // Quest-level review applies the same status + notes to every scene so the
+  // creator sees the feedback on each scene card in the Create tab.
+  const sceneUpdate: { mediaStatus: 'approved' | 'rejected'; reviewNotes?: string | null } = {
+    mediaStatus: status,
+  };
+  // Empty/whitespace notes clear any prior feedback rather than appending a
+  // blank string.
+  sceneUpdate.reviewNotes = notes && notes.trim() ? notes.trim() : null;
+
   const [updatedQuest] = await prisma.$transaction([
     prisma.quest.update({
       where: { id: questId },
@@ -106,7 +119,7 @@ export async function reviewQuestSubmission(
     }),
     prisma.scene.updateMany({
       where: { questId },
-      data: { mediaStatus: status },
+      data: sceneUpdate,
     }),
   ]);
 
@@ -132,10 +145,14 @@ export async function reviewScene(
   });
   if (!scene) return null;
 
-  // Update the individual scene
+  // Update the individual scene + persist any reviewer notes so the creator
+  // sees them in the Create tab. Empty/whitespace clears any prior note.
   await prisma.scene.update({
     where: { id: sceneId },
-    data: { mediaStatus: status },
+    data: {
+      mediaStatus: status,
+      reviewNotes: notes && notes.trim() ? notes.trim() : null,
+    },
   });
 
   if (status === 'rejected') {
