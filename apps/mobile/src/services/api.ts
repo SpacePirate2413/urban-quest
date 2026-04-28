@@ -55,6 +55,19 @@ class ApiClient {
     return this.request<any>('/users/me');
   }
 
+  async updateProfile(updates: { name?: string; bio?: string; genres?: string }) {
+    return this.request<any>('/users/me', {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
+  }
+
+  // Quests authored by the signed-in user. Used by the profile screen to
+  // mirror the creator-station's "Published Quests" panel on mobile.
+  async getMyAuthoredQuests() {
+    return this.request<{ quests: any[] } | any[]>('/quests/my');
+  }
+
   async logout() {
     await this.setToken(null);
   }

@@ -26,6 +26,8 @@ interface AuthState {
   completeOnboarding: () => void;
   logout: () => void;
   deleteAccount: () => Promise<void>;
+  updateProfile: (updates: { name?: string; bio?: string; genres?: string }) => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 interface QuestState {
@@ -79,10 +81,17 @@ interface PlaybackState {
 export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: false,
   isOnboarding: false,
-  isLoading: true,
+  // `isLoading` is the "we're actively checking auth state" flag — it
+  // should default to false because the gate in screens like Profile is
+  // already covered by `isAuthenticated && user`. Leaving it true at boot
+  // (the previous default) caused the Profile screen to render its
+  // "Loading…" spinner forever for any user that completed the onboarding
+  // path (which doesn't currently flip the flag).
+  isLoading: false,
   onboardingStep: 'login',
   user: null,
   initAuth: async () => {
+    set({ isLoading: true });
     try {
       await api.init();
       const user = await api.getMe();
@@ -97,6 +106,8 @@ export const useAuthStore = create<AuthState>((set) => ({
           avatarType: 'custom',
           birthdate: user.birthdate ? new Date(user.birthdate) : undefined,
           role: user.role,
+          bio: user.bio ?? undefined,
+          genres: user.genres ?? undefined,
           createdAt: new Date(user.createdAt),
           createdQuests: [],
           purchasedQuests: [],
@@ -109,29 +120,30 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
   devLogin: async (email: string, name: string) => {
-    try {
-      const { user } = await api.devLogin(email, name);
-      set({
-        isAuthenticated: true,
-        isOnboarding: false,
-        onboardingStep: 'complete',
-        user: {
-          id: user.id,
-          email: user.email,
-          username: user.name || user.email,
-          avatarUrl: user.avatarUrl,
-          avatarType: 'custom',
-          role: user.role,
-          createdAt: new Date(),
-          createdQuests: [],
-          purchasedQuests: [],
-          completedQuestsCount: 0,
-          reviewsWritten: [],
-        },
-      });
-    } catch (err) {
-      console.error('Dev login failed:', err);
-    }
+    // Errors propagate so the login screen can render them. Previously the
+    // store swallowed failures, which meant a wrong email or an offline API
+    // looked exactly like nothing happened.
+    const { user } = await api.devLogin(email, name);
+    set({
+      isAuthenticated: true,
+      isOnboarding: false,
+      onboardingStep: 'complete',
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.name || user.email,
+        avatarUrl: user.avatarUrl,
+        avatarType: 'custom',
+        role: user.role,
+        bio: user.bio ?? undefined,
+        genres: user.genres ?? undefined,
+        createdAt: new Date(user.createdAt ?? Date.now()),
+        createdQuests: [],
+        purchasedQuests: [],
+        completedQuestsCount: user.completedQuestsCount ?? 0,
+        reviewsWritten: [],
+      },
+    });
   },
   login: (provider) =>
     set({
@@ -176,6 +188,43 @@ export const useAuthStore = create<AuthState>((set) => ({
       onboardingStep: 'login',
       user: null,
     });
+  },
+  updateProfile: async (updates) => {
+    const updated = await api.updateProfile(updates);
+    set((state) => ({
+      user: state.user
+        ? {
+            ...state.user,
+            username: updated.name ?? state.user.username,
+            bio: updated.bio ?? state.user.bio,
+            genres: updated.genres ?? state.user.genres,
+          }
+        : null,
+    }));
+  },
+  // Re-fetch /users/me without flipping isLoading so the spinner doesn't
+  // show on every tab focus. Used by the Profile tab to pick up edits made
+  // in the creator-station web app between sessions.
+  refreshProfile: async () => {
+    try {
+      const fresh = await api.getMe();
+      set((state) => ({
+        user: state.user
+          ? {
+              ...state.user,
+              username: fresh.name ?? state.user.username,
+              bio: fresh.bio ?? state.user.bio,
+              genres: fresh.genres ?? state.user.genres,
+              avatarUrl: fresh.avatarUrl ?? state.user.avatarUrl,
+              completedQuestsCount:
+                fresh.completedQuestsCount ?? state.user.completedQuestsCount,
+            }
+          : state.user,
+      }));
+    } catch {
+      // Silently no-op — initAuth at app boot is the canonical "are you
+      // signed in" check; this is just a freshness top-up.
+    }
   },
 }));
 

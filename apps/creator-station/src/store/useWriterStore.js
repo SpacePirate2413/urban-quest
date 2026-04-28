@@ -153,6 +153,29 @@ export const useWriterStore = create((set, get) => ({
     }
   },
 
+  // Re-fetch the signed-in user from /users/me. Called on profile-page focus
+  // so changes made in the mobile app (or another browser tab) propagate
+  // here without requiring a full page reload. Silently no-ops on error so
+  // a transient network blip doesn't bounce the creator out of the editor.
+  refreshProfile: async () => {
+    try {
+      const user = await api.getMe();
+      set({ writer: user });
+      return user;
+    } catch {
+      return null;
+    }
+  },
+
+  // Single update path used by the profile editor. Writes through to
+  // /users/me and mirrors the API response back into local state so the
+  // displayed values reflect the save without a page reload.
+  updateProfile: async (updates) => {
+    const updated = await api.updateProfile(updates);
+    set((state) => ({ writer: { ...state.writer, ...updated } }));
+    return updated;
+  },
+
   // Quest actions with API sync
   loadQuests: async () => {
     set({ isLoading: true });

@@ -32,6 +32,11 @@ export interface User {
   avatarType: 'custom' | 'preset' | 'google' | 'apple';
   role: UserRole;
   birthdate?: Date;
+  // Editable creator-side profile fields. Mirrors what creator-station shows
+  // and writes via PATCH /users/me, so the same Brent who edits in the web
+  // editor sees consistent data on the phone.
+  bio?: string;
+  genres?: string; // comma-separated list — same shape the API stores
   createdQuests: string[];
   purchasedQuests: PurchasedQuest[];
   completedQuestsCount: number;

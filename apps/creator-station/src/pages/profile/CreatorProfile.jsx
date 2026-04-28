@@ -7,7 +7,7 @@ import { GENRES, useWriterStore } from '../../store/useWriterStore';
 
 export function CreatorProfile() {
   const navigate = useNavigate();
-  const { writer, quests } = useWriterStore();
+  const { writer, quests, updateProfile, refreshProfile } = useWriterStore();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState({
@@ -17,6 +17,13 @@ export function CreatorProfile() {
   });
   const [payoutStatus, setPayoutStatus] = useState(null);
   const [payoutLoading, setPayoutLoading] = useState(false);
+
+  // Re-pull the user record on every mount so edits made on mobile (or in
+  // another browser tab) are reflected immediately. The store-level cache is
+  // still useful for first-paint; this keeps it in sync.
+  useEffect(() => {
+    refreshProfile();
+  }, [refreshProfile]);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,7 +71,7 @@ export function CreatorProfile() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await api.updateProfile({
+      await updateProfile({
         name: form.name,
         bio: form.bio,
         genres: form.genres.join(', '),

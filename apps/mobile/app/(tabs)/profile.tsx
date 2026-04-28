@@ -1,8 +1,10 @@
 import { useSubscription } from '@/src/hooks/useSubscription';
+import { api } from '@/src/services/api';
 import { useAuthStore } from '@/src/store';
 import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
+import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,11 +17,53 @@ import {
   View,
 } from 'react-native';
 
+interface AuthoredQuest {
+  id: string;
+  title: string;
+  description?: string;
+  genre?: string;
+  status?: string;
+  coverImage?: string;
+  price?: number;
+}
+
 export default function ProfileScreen() {
-  const { user, isLoading, isAuthenticated, logout, deleteAccount } = useAuthStore();
+  const { user, isLoading, isAuthenticated, logout, deleteAccount, refreshProfile } =
+    useAuthStore();
   const { isPremium } = useSubscription();
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [authoredQuests, setAuthoredQuests] = useState<AuthoredQuest[]>([]);
+
+  // Re-pull /users/me + the authored-quests list every time the Profile tab
+  // gains focus. This keeps mobile in sync with edits made in the
+  // creator-station web app between sessions, without forcing a sign-out /
+  // sign-in cycle.
+  useFocusEffect(
+    useCallback(() => {
+      refreshProfile();
+      let cancelled = false;
+      api
+        .getMyAuthoredQuests()
+        .then((data: any) => {
+          if (cancelled) return;
+          const list = Array.isArray(data) ? data : data?.quests ?? [];
+          setAuthoredQuests(list);
+        })
+        .catch(() => {
+          if (!cancelled) setAuthoredQuests([]);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [refreshProfile]),
+  );
+
+  const publishedQuests = authoredQuests.filter((q) => q.status === 'published');
+  const genres = (user?.genres ?? '')
+    .split(',')
+    .map((g) => g.trim())
+    .filter(Boolean);
 
   const handleDeleteAccount = async () => {
     setIsDeleting(true);
@@ -69,7 +113,7 @@ export default function ProfileScreen() {
     { icon: '💳', label: 'Payment Methods', subtitle: 'Manage cards & wallets', route: '/profile/payments' },
     { icon: '🔔', label: 'Notifications', subtitle: 'Alerts & quiet hours', route: '/profile/notifications' },
     { icon: '📍', label: 'Location Settings', subtitle: 'Permissions & tracking', route: '/profile/location' },
-    { icon: '🎨', label: 'Edit Profile', subtitle: 'Avatar & username', route: '/profile/edit' },
+    { icon: '🎨', label: 'Edit Profile', subtitle: 'Name, bio, genres', route: '/profile/edit' },
   ];
 
   const memberSince = user.createdAt
@@ -107,7 +151,99 @@ export default function ProfileScreen() {
           <Text style={styles.statValue}>{user.reviewsWritten?.length ?? 0}</Text>
           <Text style={styles.statLabel}>Reviews</Text>
         </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <Text style={styles.statValue}>{authoredQuests.length}</Text>
+          <Text style={styles.statLabel}>Quests</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <Text style={styles.statValue}>{publishedQuests.length}</Text>
+          <Text style={styles.statLabel}>Published</Text>
+        </View>
       </View>
+
+      <View style={styles.sectionCard}>
+        <Text style={styles.sectionLabel}>About</Text>
+        <Text
+          style={[
+            Typography.body,
+            { color: user.bio ? Colors.textPrimary : Colors.textSecondary, lineHeight: 20 },
+          ]}
+        >
+          {user.bio || 'No bio yet. Tap "Edit Profile" below to add one.'}
+        </Text>
+      </View>
+
+      <View style={styles.sectionCard}>
+        <Text style={styles.sectionLabel}>Genres</Text>
+        {genres.length > 0 ? (
+          <View style={styles.genreRow}>
+            {genres.map((g) => (
+              <View key={g} style={styles.genreChip}>
+                <Text style={styles.genreChipText}>{g}</Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={[Typography.body, { color: Colors.textSecondary }]}>
+            No genres selected.
+          </Text>
+        )}
+      </View>
+
+      {authoredQuests.length > 0 && (
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionLabel}>My Quests</Text>
+          {authoredQuests.map((q) => (
+            <TouchableOpacity
+              key={q.id}
+              style={styles.questRow}
+              onPress={() => router.push(`/quest/${q.id}` as any)}
+              activeOpacity={0.7}
+            >
+              {q.coverImage ? (
+                <Image source={{ uri: q.coverImage }} style={styles.questCover} />
+              ) : (
+                <View style={[styles.questCover, styles.questCoverPlaceholder]}>
+                  <Text style={{ fontSize: 22 }}>🗺️</Text>
+                </View>
+              )}
+              <View style={styles.questMeta}>
+                <Text style={[Typography.body, { fontWeight: '600' }]} numberOfLines={1}>
+                  {q.title}
+                </Text>
+                <Text
+                  style={[Typography.caption, { color: Colors.textSecondary, marginTop: 2 }]}
+                  numberOfLines={1}
+                >
+                  {q.description || 'No description'}
+                </Text>
+                <View style={styles.questTagsRow}>
+                  <View
+                    style={[
+                      styles.questStatusBadge,
+                      q.status === 'published'
+                        ? styles.questStatusPublished
+                        : styles.questStatusDraft,
+                    ]}
+                  >
+                    <Text style={styles.questStatusText}>{q.status ?? 'draft'}</Text>
+                  </View>
+                  {q.genre && (
+                    <Text style={[Typography.caption, { color: Colors.textSecondary }]}>
+                      {q.genre}
+                    </Text>
+                  )}
+                  <Text style={[Typography.caption, { color: Colors.textSecondary }]}>
+                    {q.price && q.price > 0 ? `$${q.price.toFixed(2)}` : 'Free'}
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       <TouchableOpacity
         style={[styles.premiumCard, isPremium && styles.premiumCardActive]}
@@ -304,6 +440,87 @@ const styles = StyleSheet.create({
   statDivider: {
     width: 1,
     backgroundColor: Colors.border,
+  },
+  sectionCard: {
+    backgroundColor: Colors.surface,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.lg,
+    padding: Spacing.lg,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    color: Colors.cyan,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: Spacing.sm,
+  },
+  genreRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  genreChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: Colors.cyan,
+    backgroundColor: Colors.cyan + '15',
+  },
+  genreChipText: {
+    color: Colors.cyan,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  questRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  questCover: {
+    width: 56,
+    height: 56,
+    borderRadius: 8,
+  },
+  questCoverPlaceholder: {
+    backgroundColor: Colors.primaryBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  questMeta: {
+    flex: 1,
+    minWidth: 0,
+  },
+  questTagsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: 4,
+  },
+  questStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  questStatusPublished: {
+    backgroundColor: Colors.neonGreen + '20',
+  },
+  questStatusDraft: {
+    backgroundColor: Colors.textSecondary + '20',
+  },
+  questStatusText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   premiumCard: {
     flexDirection: 'row',
