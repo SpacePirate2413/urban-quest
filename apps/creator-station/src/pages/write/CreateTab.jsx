@@ -152,8 +152,12 @@ export function CreateTab({ questId }) {
     updateScene(questId, sceneId, { mediaFile: null, mediaUrl: null, mediaType: null });
   };
 
-  const handleUploadMedia = async (sceneId) => {
-    const pending = pendingMedia[sceneId];
+  const handleUploadMedia = async (sceneId, pendingArg) => {
+    // Optional `pendingArg` lets callers (e.g. the AI Narrate modal's
+    // auto-upload after Attach) hand the freshly-staged media in directly,
+    // avoiding the React-state-batching window where pendingMedia[sceneId]
+    // hasn't yet been written when the upload fires.
+    const pending = pendingArg ?? pendingMedia[sceneId];
     if (!pending?.file) return;
 
     setIsUploading(true);
@@ -656,9 +660,17 @@ export function CreateTab({ questId }) {
         onClose={() => setShowAINarrate(false)}
         questId={questId}
         sceneId={selectedSceneId}
-        onMediaGenerated={(sceneId, mediaData) => {
-          setPendingMedia(prev => ({ ...prev, [sceneId]: mediaData }));
+        onMediaGenerated={async (sceneId, mediaData) => {
+          setPendingMedia((prev) => ({ ...prev, [sceneId]: mediaData }));
           setShowAINarrate(false);
+          // Auto-upload AI-generated media. Manual uploads still need an
+          // explicit Upload-to-Server click (the user is mid-decision-making
+          // about a file they just picked), but for AI narration there's
+          // nothing left to decide — they pressed "Attach to scene", they
+          // want it on the server.
+          if (mediaData.isGenerated) {
+            await handleUploadMedia(sceneId, mediaData);
+          }
         }}
       />
     </div>

@@ -72,9 +72,11 @@ if curl -fsS "$CHATTERBOX_URL/v1/voices/$VOICE_ID" >/dev/null 2>&1; then
 fi
 
 echo "→ Uploading to Chatterbox as '$VOICE_ID'"
+# Chatterbox's POST /v1/voices expects `voice_name` (not `name`) — see
+# `app/api/endpoints/voices.py` upload_voice signature.
 RESPONSE=$(curl -fsS -X POST "$CHATTERBOX_URL/v1/voices" \
   -F "voice_file=@$OUT" \
-  -F "name=$VOICE_ID")
+  -F "voice_name=$VOICE_ID")
 
 echo "→ Done. Chatterbox response:"
 echo "$RESPONSE"
