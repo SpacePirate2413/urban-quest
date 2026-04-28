@@ -465,16 +465,31 @@ export const useWriterStore = create((set, get) => ({
     }, 500);
   },
 
-  deleteScene: (questId, sceneId) => set((state) => ({
-    quests: state.quests.map((q) =>
-      q.id === questId
-        ? {
-            ...q,
-            scenes: q.scenes.filter((s) => s.id !== sceneId),
-          }
-        : q
-    ),
-  })),
+  deleteScene: async (questId, sceneId) => {
+    // Optimistic local removal so the UI snaps immediately.
+    set((state) => ({
+      quests: state.quests.map((q) =>
+        q.id === questId
+          ? { ...q, scenes: q.scenes.filter((s) => s.id !== sceneId) }
+          : q
+      ),
+    }));
+
+    // Local-only scenes (offline-mode IDs) never hit the server; calling the
+    // API would 404. Anything else needs to be deleted on the backend so it
+    // doesn't reappear on the next loadQuests / submit-for-review.
+    if (sceneId.startsWith('scene-')) return;
+
+    try {
+      await api.deleteScene(sceneId);
+    } catch (err) {
+      // The scene is already removed locally; if the server delete fails,
+      // log it but don't try to "rollback" — that would be more confusing
+      // for the creator than a stale row that loadQuests will eventually
+      // resync.
+      console.error('Server-side scene delete failed:', err);
+    }
+  },
 
   submitSceneMedia: (questId, sceneId, mediaFile, mediaType) => {
     const state = get();

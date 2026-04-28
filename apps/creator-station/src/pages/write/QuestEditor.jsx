@@ -102,7 +102,7 @@ export function QuestEditor() {
       <ReReviewPrompt questId={quest.id} />
 
       <Tabs defaultValue="settings" className="flex-1 flex flex-col overflow-hidden">
-        <div className="px-6 py-3 border-b border-panel-border">
+        <div className="px-6 py-3 border-b border-panel-border flex items-center justify-between">
           <TabsList>
             <TabsTrigger value="settings" icon={<Settings className="w-4 h-4" />}>
               Quest Info
@@ -117,6 +117,10 @@ export function QuestEditor() {
               Reviews
             </TabsTrigger>
           </TabsList>
+          {(() => {
+            const s = computeQuestStatus(quest);
+            return <Badge variant={s.variant}>{s.label}</Badge>;
+          })()}
         </div>
 
         <div className="flex-1 overflow-hidden p-6">
@@ -139,6 +143,36 @@ export function QuestEditor() {
       </Tabs>
     </div>
   );
+}
+
+// Maps the quest's lifecycle to a single high-signal pill the creator can
+// glance at from the tab bar. Status is derived from `quest.status` +
+// `quest.submissionStatus` rather than a single column because the review
+// cycle layers on top of the publication state.
+//
+//   Draft        → never been submitted; needs more work
+//   In Progress  → submitted before, came back as rejected / needs_re_review;
+//                  the creator is in the middle of revisions
+//   In Review    → submitted, awaiting admin
+//   Approved     → admin OK'd it but creator hasn't pushed Publish yet
+//   Published    → live to players
+function computeQuestStatus(quest) {
+  if (quest.status === 'published') {
+    return { label: 'Published', variant: 'green-solid' };
+  }
+  if (quest.submissionStatus === 'pending') {
+    return { label: 'In Review', variant: 'yellow-solid' };
+  }
+  if (quest.submissionStatus === 'approved') {
+    return { label: 'Approved', variant: 'green-solid' };
+  }
+  if (
+    quest.submissionStatus === 'rejected' ||
+    quest.submissionStatus === 'needs_re_review'
+  ) {
+    return { label: 'In Progress', variant: 'orange-solid' };
+  }
+  return { label: 'Draft', variant: 'red-solid' };
 }
 
 export default QuestEditor;

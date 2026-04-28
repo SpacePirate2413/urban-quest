@@ -195,31 +195,61 @@ export function AINarrateModal({ isOpen, onClose, questId, sceneId, onMediaGener
     if (!scene?.script?.trim() || !selectedVoiceId || isGenerating) return;
     setIsGenerating(true);
     setGenerationError(null);
-    setGenerationProgress({ percent: 0, currentStep: 'Starting…', eta: null });
+    const startedAt = Date.now();
+    setGenerationProgress({
+      percent: 0,
+      currentStep: 'Starting…',
+      elapsedSec: 0,
+      remainingSec: null,
+    });
     if (generatedUrl) {
       URL.revokeObjectURL(generatedUrl);
       setGeneratedUrl(null);
       setGeneratedBlob(null);
     }
 
-    // Poll Chatterbox's /v1/status/progress endpoint while the synthesis
-    // request is in flight. Stop the loop once the response below resolves
-    // (the `finally` block flips `cancelled` to true).
+    // Poll Chatterbox's /v1/status/progress endpoint at 250ms cadence so the
+    // elapsed counter ticks up smoothly and chunk transitions feel snappy.
+    // Estimated-remaining is computed locally from elapsed × (100 − percent)
+    // ÷ percent once we have a stable percentage to extrapolate from — that
+    // gives a self-correcting "~Ns remaining" display that gets tighter as
+    // the run progresses.
     let cancelled = false;
     (async () => {
       while (!cancelled) {
         const progress = await ttsService.getProgress();
         if (cancelled) return;
+        const elapsedMs = Date.now() - startedAt;
+        const elapsedSec = elapsedMs / 1000;
+
         if (progress?.is_processing) {
+          const percent = Math.max(0, Math.min(100, progress.progress_percentage ?? 0));
+          // Trust local timing over Chatterbox's own clock here — its
+          // estimated_completion field varies in shape and isn't available
+          // on every build.
+          let remainingSec = null;
+          if (percent >= 5 && percent < 100) {
+            remainingSec = (elapsedMs / percent) * (100 - percent) / 1000;
+          }
           setGenerationProgress({
-            percent: progress.progress_percentage ?? 0,
+            percent,
             currentStep: progress.current_step || 'Synthesizing audio…',
             currentChunk: progress.current_chunk,
             totalChunks: progress.total_chunks,
-            eta: progress.estimated_completion ?? null,
+            elapsedSec,
+            remainingSec,
           });
+        } else {
+          // Chatterbox hasn't started reporting yet (queueing / model
+          // warmup) — keep the elapsed timer visible so the user sees
+          // *something* moving.
+          setGenerationProgress((prev) => ({
+            ...(prev || { percent: 0, currentStep: 'Starting…' }),
+            elapsedSec,
+            remainingSec: null,
+          }));
         }
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 250));
       }
     })();
 
@@ -411,7 +441,7 @@ export function AINarrateModal({ isOpen, onClose, questId, sceneId, onMediaGener
         {isGenerating && generationProgress && (
           <div className="space-y-1">
             <div className="flex items-center justify-between text-[10px] text-white/70">
-              <span>
+              <span className="truncate pr-2">
                 {generationProgress.currentStep}
                 {generationProgress.totalChunks > 1 && (
                   <span className="text-white/40 ml-1">
@@ -419,8 +449,8 @@ export function AINarrateModal({ isOpen, onClose, questId, sceneId, onMediaGener
                   </span>
                 )}
               </span>
-              <span className="font-bangers text-cyan">
-                {Math.max(0, Math.min(100, Math.round(generationProgress.percent)))}%
+              <span className="font-bangers text-cyan flex-shrink-0">
+                {Math.round(generationProgress.percent)}%
               </span>
             </div>
             <div className="w-full h-1.5 bg-input-bg rounded-full overflow-hidden">
@@ -430,6 +460,14 @@ export function AINarrateModal({ isOpen, onClose, questId, sceneId, onMediaGener
                   width: `${Math.max(0, Math.min(100, generationProgress.percent))}%`,
                 }}
               />
+            </div>
+            <div className="flex items-center justify-between text-[10px] text-white/50">
+              <span>{formatSeconds(generationProgress.elapsedSec)} elapsed</span>
+              <span>
+                {generationProgress.remainingSec != null
+                  ? `~${formatSeconds(generationProgress.remainingSec)} remaining`
+                  : 'Estimating…'}
+              </span>
             </div>
           </div>
         )}
@@ -558,6 +596,18 @@ function VoiceCard({ voice, isSelected, isPreviewing, isPreviewLoading, onSelect
       )}
     </div>
   );
+}
+
+// Format seconds for the elapsed/remaining display. Sub-minute values stay
+// in seconds ("8s"); past 60s we use "Xm Ys" so 90 seconds shows as "1m 30s"
+// rather than "90s". Negative or NaN inputs render as "—".
+function formatSeconds(seconds) {
+  if (seconds == null || isNaN(seconds) || seconds < 0) return '—';
+  const total = Math.round(seconds);
+  if (total < 60) return `${total}s`;
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return s ? `${m}m ${s}s` : `${m}m`;
 }
 
 function SliderRow({ label, accent, min, max, step, value, onChange }) {

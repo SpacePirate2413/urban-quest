@@ -44,12 +44,6 @@ export function QuestSettings({ questId }) {
     }
   };
 
-  const statusOptions = [
-    { value: 'draft', label: 'Draft' },
-    { value: 'review', label: 'In Review' },
-    { value: 'published', label: 'Published' },
-  ];
-
   const handleUpdate = (field, value) => {
     updateQuest(questId, { [field]: value });
   };
@@ -229,12 +223,6 @@ export function QuestSettings({ questId }) {
             </div>
           </div>
 
-          <Select
-            label="Status"
-            value={quest.status}
-            onChange={(e) => handleUpdate('status', e.target.value)}
-            options={statusOptions}
-          />
         </div>
       </Card>
 
