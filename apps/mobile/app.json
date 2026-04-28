@@ -11,6 +11,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.urbanquest.app",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSCameraUsageDescription": "Urban Quest needs camera access to take photos and videos for waypoint scouting.",
         "NSMicrophoneUsageDescription": "Urban Quest needs microphone access to record audio notes for waypoint scouting.",

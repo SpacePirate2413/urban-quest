@@ -71,15 +71,13 @@ export async function googleCallbackHandler(
 
     const token = await reply.jwtSign({ id: user.id, email: user.email });
 
-    reply.setCookie('token', token, {
-      httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 60 * 60 * 24 * 7, // 7 days
-    });
-
-    return reply.redirect(`${env.CORS_ORIGINS[0]}/auth/callback?success=true`);
+    // Hand the JWT back to the SPA via the URL fragment. Fragments are
+    // stripped from server logs and Referer headers, never sent to the
+    // origin host, and read only by the page's own JS — strictly safer
+    // than a query string for a bearer token. The creator-station's
+    // /auth/callback page reads the fragment, stores via api.setToken,
+    // then replaces the URL.
+    return reply.redirect(`${env.CORS_ORIGINS[0]}/auth/callback#token=${token}`);
   } catch (err) {
     request.log.error(err, 'Google OAuth error');
     return reply.status(500).send({ error: 'Authentication failed' });

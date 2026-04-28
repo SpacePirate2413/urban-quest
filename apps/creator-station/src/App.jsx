@@ -25,6 +25,14 @@ function LoginScreen() {
     }
   };
 
+  // Kick off the backend's web OAuth flow. The Fastify handler at
+  // GET /api/users/auth/google redirects to Google, then back to
+  // /api/users/auth/google/callback, which signs the user in and
+  // bounces to /auth/callback#token=<jwt> on the creator-station origin
+  // (see AuthCallback below).
+  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+  const googleSignInUrl = `${apiBase.replace(/\/api\/?$/, '/api')}/users/auth/google`;
+
   return (
     <div className="min-h-screen bg-navy-deep flex items-center justify-center p-4">
       <div className="bg-panel border border-panel-border rounded-xl p-8 max-w-md w-full">
@@ -33,7 +41,21 @@ function LoginScreen() {
           <span className="text-neon-green">QUEST</span>
         </h1>
         <p className="text-white/70 text-center mb-8">Creator Station</p>
-        
+
+        <a
+          href={googleSignInUrl}
+          className="w-full flex items-center justify-center gap-2 bg-white text-navy-deep border border-panel-border rounded-lg py-3 hover:bg-white/90 transition-colors mb-3 font-bangers"
+        >
+          <span className="text-yellow font-bold">G</span>
+          Sign in with Google
+        </a>
+
+        <div className="flex items-center gap-3 my-4">
+          <div className="flex-1 h-px bg-panel-border" />
+          <span className="text-xs text-white/50 uppercase tracking-wider">or</span>
+          <div className="flex-1 h-px bg-panel-border" />
+        </div>
+
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className="block text-white/70 text-sm mb-2">Email</label>
@@ -70,15 +92,73 @@ function LoginScreen() {
   );
 }
 
+// Lands here after the backend's Google OAuth callback redirects the
+// browser to <creator-station-origin>/auth/callback#token=<jwt>. We pull
+// the token out of the URL fragment, hand it to the API client + writer
+// store, and route the user into the editor.
+function AuthCallback() {
+  const navigate = useNavigate();
+  const { checkAuth } = useWriterStore();
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const hash = window.location.hash.replace(/^#/, '');
+    const params = new URLSearchParams(hash);
+    const token = params.get('token');
+    const errMsg = params.get('error');
+
+    if (errMsg) {
+      setError(errMsg);
+      return;
+    }
+    if (!token) {
+      setError('No authentication token returned from the provider.');
+      return;
+    }
+
+    api.setToken(token);
+    // Clear the token out of window.location so a Back nav or a copied
+    // URL doesn't leak it.
+    window.history.replaceState(null, '', '/write');
+    checkAuth().finally(() => navigate('/write', { replace: true }));
+  }, [navigate, checkAuth]);
+
+  return (
+    <div className="min-h-screen bg-navy-deep flex items-center justify-center p-4">
+      {error ? (
+        <div className="text-center">
+          <p className="font-bangers text-2xl text-hot-pink mb-2">Sign-in failed</p>
+          <p className="text-sm text-white/70 mb-4">{error}</p>
+          <a href="/" className="text-cyan underline text-sm">Try again</a>
+        </div>
+      ) : (
+        <p className="font-bangers text-xl text-cyan">Signing you in…</p>
+      )}
+    </div>
+  );
+}
+
 function AppContent() {
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith('/admin');
+  const isAuthCallback = location.pathname.startsWith('/auth/callback');
   const { isAuthenticated, checkAuth } = useWriterStore();
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
     checkAuth().finally(() => setChecking(false));
   }, [checkAuth]);
+
+  // The OAuth-callback page handles its own auth bootstrap (token from
+  // URL fragment → API client → checkAuth → /write). Render it before the
+  // login gate so we don't bounce the user back to LoginScreen.
+  if (isAuthCallback) {
+    return (
+      <Routes>
+        <Route path="/auth/callback" element={<AuthCallback />} />
+      </Routes>
+    );
+  }
 
   // Admin portal doesn't require auth
   if (isAdminRoute) {

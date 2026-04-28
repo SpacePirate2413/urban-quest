@@ -51,6 +51,17 @@ class ApiClient {
     return data;
   }
 
+  // Native Apple/Google sign-in — the mobile login screen calls this after
+  // the platform's native UI returns an identityToken. The backend verifies
+  // the token with Google/Apple, finds-or-creates the user, and returns a
+  // real JWT.
+  async exchangeMobileToken(provider: 'apple' | 'google', idToken: string) {
+    return this.request<{ token: string; user: any }>('/users/auth/mobile/token', {
+      method: 'POST',
+      body: JSON.stringify({ provider, idToken }),
+    });
+  }
+
   async getMe() {
     return this.request<any>('/users/me');
   }

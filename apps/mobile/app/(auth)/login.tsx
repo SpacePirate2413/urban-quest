@@ -1,6 +1,8 @@
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import { router } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,6 +18,10 @@ import {
 import { useAuthStore } from '@/src/store';
 import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
 
+// Required so the AuthSession redirect lands back on the app cleanly when
+// Google's auth completes in the system browser.
+WebBrowser.maybeCompleteAuthSession();
+
 const PRIVACY_POLICY_URL = 'https://urbanquestapp.com/privacy-policy/';
 const TERMS_URL = 'https://urbanquestapp.com/terms-conditions/';
 
@@ -24,11 +30,60 @@ const TERMS_URL = 'https://urbanquestapp.com/terms-conditions/';
 const DEV_USER = { email: 'creator@urbanquest.dev', name: 'Test Creator' };
 
 export default function LoginScreen() {
-  const { login, devLogin } = useAuthStore();
+  const { devLogin, signInWithProvider } = useAuthStore();
   const [accepted, setAccepted] = useState(false);
   const [email, setEmail] = useState(DEV_USER.email);
   const [name, setName] = useState(DEV_USER.name);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+
+  // Apple Sign In is iOS-only at the system level. Hide the button on
+  // platforms where it can't function rather than render a button that
+  // fails on press.
+  useEffect(() => {
+    let cancelled = false;
+    AppleAuthentication.isAvailableAsync()
+      .then((available) => {
+        if (!cancelled) setAppleAvailable(available);
+      })
+      .catch(() => {
+        if (!cancelled) setAppleAvailable(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Google Sign In via expo-auth-session. The `useIdTokenAuthRequest` flow
+  // returns an idToken we can hand to /users/auth/mobile/token for backend
+  // verification. Each platform needs its own OAuth client ID — see
+  // EXPO_PUBLIC_GOOGLE_CLIENT_ID_* env vars and the README.
+  const [, googleResponse, promptGoogle] = Google.useIdTokenAuthRequest({
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB,
+    scopes: ['openid', 'email', 'profile'],
+  });
+
+  // When Google's flow returns successfully, hand the idToken to the
+  // backend exchange. Errors from the prompt itself are non-fatal (user
+  // dismissed the sheet, network blip, etc.).
+  useEffect(() => {
+    if (googleResponse?.type !== 'success') return;
+    const idToken = googleResponse.params?.id_token;
+    if (!idToken) return;
+    (async () => {
+      setIsSubmitting(true);
+      try {
+        await signInWithProvider('google', idToken);
+        router.replace('/(tabs)');
+      } catch (err: any) {
+        Alert.alert('Google sign-in failed', err?.message ?? 'Please try again.');
+      } finally {
+        setIsSubmitting(false);
+      }
+    })();
+  }, [googleResponse, signInWithProvider]);
 
   const requireConsent = (): boolean => {
     if (!accepted) {
@@ -41,10 +96,45 @@ export default function LoginScreen() {
     return true;
   };
 
-  const handleProviderLogin = (provider: 'apple' | 'google') => {
+  const handleAppleLogin = async () => {
     if (!requireConsent()) return;
-    login(provider);
-    router.push('/(auth)/onboarding');
+    setIsSubmitting(true);
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      if (!credential.identityToken) {
+        throw new Error('Apple did not return an identity token.');
+      }
+      await signInWithProvider('apple', credential.identityToken);
+      router.replace('/(tabs)');
+    } catch (err: any) {
+      // The native sheet sets `code === 'ERR_REQUEST_CANCELED'` when the
+      // user dismisses without signing in. Don't show an error for that.
+      if (err?.code === 'ERR_REQUEST_CANCELED') return;
+      Alert.alert('Apple sign-in failed', err?.message ?? 'Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    if (!requireConsent()) return;
+    if (!process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS && !process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID) {
+      Alert.alert(
+        'Google sign-in not configured',
+        'Set EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS / EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID in apps/mobile/.env to enable. Use email sign-in for now.',
+      );
+      return;
+    }
+    try {
+      await promptGoogle();
+    } catch (err: any) {
+      Alert.alert('Google sign-in failed', err?.message ?? 'Please try again.');
+    }
   };
 
   const handleEmailLogin = async () => {
@@ -178,19 +268,23 @@ export default function LoginScreen() {
           </View>
 
           <View style={styles.buttonContainer}>
-            <TouchableOpacity
-              style={[
-                styles.button,
-                styles.appleButton,
-                (!accepted || isSubmitting) && styles.buttonDisabled,
-              ]}
-              onPress={() => handleProviderLogin('apple')}
-              disabled={!accepted || isSubmitting}
-              accessibilityState={{ disabled: !accepted || isSubmitting }}
-            >
-              <Text style={styles.appleIcon}>🍎</Text>
-              <Text style={[Typography.body, styles.appleButtonText]}>Sign in with Apple</Text>
-            </TouchableOpacity>
+            {appleAvailable && (
+              // Native Apple-styled button — required for App Store
+              // submission per Guideline 4.8 when other social logins are
+              // present. AppleAuthenticationButton uses the system's
+              // pixel-perfect rendering so we don't have to maintain
+              // light/dark variants manually.
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+                cornerRadius={12}
+                style={[
+                  styles.appleNativeButton,
+                  (!accepted || isSubmitting) && styles.buttonDisabled,
+                ]}
+                onPress={handleAppleLogin}
+              />
+            )}
 
             <TouchableOpacity
               style={[
@@ -198,7 +292,7 @@ export default function LoginScreen() {
                 styles.googleButton,
                 (!accepted || isSubmitting) && styles.buttonDisabled,
               ]}
-              onPress={() => handleProviderLogin('google')}
+              onPress={handleGoogleLogin}
               disabled={!accepted || isSubmitting}
               accessibilityState={{ disabled: !accepted || isSubmitting }}
             >
@@ -341,15 +435,9 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
-  appleButton: {
-    backgroundColor: '#FFFFFF',
-  },
-  appleButtonText: {
-    color: '#000000',
-    fontWeight: '600',
-  },
-  appleIcon: {
-    fontSize: 20,
+  appleNativeButton: {
+    width: '100%',
+    height: 48,
   },
   googleButton: {
     backgroundColor: Colors.surface,

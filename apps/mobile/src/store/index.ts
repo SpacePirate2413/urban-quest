@@ -19,6 +19,7 @@ interface AuthState {
   user: User | null;
   initAuth: () => Promise<void>;
   devLogin: (email: string, name: string) => Promise<void>;
+  signInWithProvider: (provider: 'apple' | 'google', idToken: string) => Promise<void>;
   login: (provider: 'apple' | 'google') => void;
   setBirthdate: (date: Date) => void;
   setUsername: (username: string) => void;
@@ -124,6 +125,35 @@ export const useAuthStore = create<AuthState>((set) => ({
     // store swallowed failures, which meant a wrong email or an offline API
     // looked exactly like nothing happened.
     const { user } = await api.devLogin(email, name);
+    set({
+      isAuthenticated: true,
+      isOnboarding: false,
+      onboardingStep: 'complete',
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.name || user.email,
+        avatarUrl: user.avatarUrl,
+        avatarType: 'custom',
+        role: user.role,
+        bio: user.bio ?? undefined,
+        genres: user.genres ?? undefined,
+        createdAt: new Date(user.createdAt ?? Date.now()),
+        createdQuests: [],
+        purchasedQuests: [],
+        completedQuestsCount: user.completedQuestsCount ?? 0,
+        reviewsWritten: [],
+      },
+    });
+  },
+  // Real native sign-in path. Once a provider's native UI returns an
+  // idToken, the login screen calls this to exchange it for a real JWT
+  // against the backend's /users/auth/mobile/token endpoint. Errors
+  // propagate so the caller can render a useful Alert instead of the
+  // store silently failing.
+  signInWithProvider: async (provider, idToken) => {
+    const { token, user } = await api.exchangeMobileToken(provider, idToken);
+    await api.setToken(token);
     set({
       isAuthenticated: true,
       isOnboarding: false,
