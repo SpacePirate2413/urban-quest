@@ -141,7 +141,59 @@ export async function getPublishedQuests(
   limit = 50,
   offset = 0,
 ) {
-  return getQuests({ ...filters, status: 'published' }, limit, offset);
+  const result = await getQuests({ ...filters, status: 'published' }, limit, offset);
+
+  // Hide quests that the mobile player can't actually finish — missing scenes,
+  // missing media, or choices that don't route anywhere. The creator's own
+  // `getMyQuests` skips this filter so they can still see their drafts.
+  const playable = result.quests.filter(isQuestPlayable);
+
+  return { ...result, quests: playable, total: playable.length };
+}
+
+/** End-sentinel value stored in `choice.sceneId` to mark a quest-ending choice. */
+export const END_SCENE_ID = '__END__';
+
+/**
+ * A quest is playable when every scene has a script, question, choices, and
+ * media, and every choice routes to either a real scene in this quest or the
+ * END sentinel. Mobile filters its public feed by this; the creator's own
+ * list does not.
+ *
+ * Choices are stored as `{ text, sceneId }`. Legacy data may still have
+ * `{ text, waypointId }` shape; we accept those too as long as the waypointId
+ * matches one of the quest's waypoints (the read path migrates them on the fly).
+ */
+export function isQuestPlayable(quest: {
+  waypoints: { id: string }[];
+  scenes: { id: string; script: string | null; question: string | null; choices: string | null; mediaUrl: string | null }[];
+}): boolean {
+  if (!quest.waypoints?.length || !quest.scenes?.length) return false;
+  const waypointIds = new Set(quest.waypoints.map((w) => w.id));
+  const sceneIds = new Set(quest.scenes.map((s) => s.id));
+
+  for (const scene of quest.scenes) {
+    if (!scene.script?.trim()) return false;
+    if (!scene.question?.trim()) return false;
+    if (!scene.mediaUrl) return false;
+    let parsed: { text?: string; sceneId?: string; waypointId?: string }[];
+    try {
+      parsed = JSON.parse(scene.choices ?? '[]');
+    } catch {
+      return false;
+    }
+    if (!Array.isArray(parsed) || parsed.length === 0) return false;
+    for (const c of parsed) {
+      if (!c?.text?.trim()) return false;
+      const target = c.sceneId ?? c.waypointId ?? '';
+      if (target === END_SCENE_ID) continue;
+      // New shape: must point at a known scene. Legacy shape: must point at a
+      // known waypoint (still routable because at least one scene lives there
+      // — read paths fall back to the first scene at that waypoint).
+      if (!(sceneIds.has(target) || waypointIds.has(target))) return false;
+    }
+  }
+  return true;
 }
 
 // Fields that are considered "content" — editing any of these on a published

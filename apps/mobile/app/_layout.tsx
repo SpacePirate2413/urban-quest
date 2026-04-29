@@ -59,6 +59,12 @@ export default function RootLayout() {
         <Stack.Screen name="quest/play" options={{ presentation: 'fullScreenModal', gestureEnabled: false }} />
         <Stack.Screen name="profile/premium" options={{ presentation: 'modal' }} />
         <Stack.Screen name="profile/edit" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="profile/location" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="profile/notifications" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="profile/payments" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="profile/quests" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="profile/completed" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="profile/reviews" options={{ presentation: 'modal' }} />
       </Stack>
       <StatusBar style="light" />
     </ThemeProvider>

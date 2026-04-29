@@ -2,21 +2,20 @@ import { api } from '@/src/services/api';
 import { useLocationStore, useWriteStore } from '@/src/store';
 import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
 import { ScoutedWaypoint } from '@/src/types';
-import { Audio } from 'expo-av';
-import * as ImagePicker from 'expo-image-picker';
-import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+
+// Media capture (photo / video / audio) was removed from this screen on
+// 2026-04-29 — see tracker entry F3. The Prisma columns + the
+// /scouted-waypoints/:id/upload endpoint are intentionally left in place so
+// the feature can be re-enabled without a schema migration.
 
 function WaypointCard({ waypoint, onPress }: { waypoint: ScoutedWaypoint; onPress: () => void }) {
   return (
     <TouchableOpacity style={styles.waypointCard} onPress={onPress}>
-      {waypoint.photos.length > 0 ? (
-        <Image source={{ uri: waypoint.photos[0] }} style={styles.waypointImage} />
-      ) : (
-        <View style={[styles.waypointImage, styles.noImage]}>
-          <Text style={{ fontSize: 24 }}>📍</Text>
-        </View>
-      )}
+      <View style={[styles.waypointImage, styles.noImage]}>
+        <Text style={{ fontSize: 24 }}>📍</Text>
+      </View>
       <View style={styles.waypointInfo}>
         <Text style={Typography.headerMedium}>{waypoint.name}</Text>
         {waypoint.notes && (
@@ -24,11 +23,6 @@ function WaypointCard({ waypoint, onPress }: { waypoint: ScoutedWaypoint; onPres
             {waypoint.notes}
           </Text>
         )}
-        <View style={styles.waypointMeta}>
-          {waypoint.photos.length > 0 && <Text style={styles.metaTag}>📷 {waypoint.photos.length}</Text>}
-          {waypoint.videos.length > 0 && <Text style={styles.metaTag}>🎥 {waypoint.videos.length}</Text>}
-          {waypoint.audioRecordings.length > 0 && <Text style={styles.metaTag}>🎤 {waypoint.audioRecordings.length}</Text>}
-        </View>
         <Text style={[Typography.caption, { color: Colors.textSecondary, marginTop: Spacing.xs }]}>
           {new Date(waypoint.createdAt).toLocaleDateString()}
         </Text>
@@ -40,14 +34,11 @@ function WaypointCard({ waypoint, onPress }: { waypoint: ScoutedWaypoint; onPres
 function AddWaypointModal({ visible, onClose, onSave, currentLocation }: {
   visible: boolean;
   onClose: () => void;
-  onSave: (name: string, notes: string, pendingMedia: PendingMedia[]) => void;
+  onSave: (name: string, notes: string) => void;
   currentLocation: { latitude: number; longitude: number } | null;
 }) {
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
-  const [pendingMedia, setPendingMedia] = useState<PendingMedia[]>([]);
-  const [isRecording, setIsRecording] = useState(false);
-  const recordingRef = useRef<Audio.Recording | null>(null);
 
   if (!visible) return null;
 
@@ -56,109 +47,15 @@ function AddWaypointModal({ visible, onClose, onSave, currentLocation }: {
       Alert.alert('Error', 'Please enter a name for this waypoint');
       return;
     }
-    onSave(name, notes, pendingMedia);
+    onSave(name, notes);
     setName('');
     setNotes('');
-    setPendingMedia([]);
   };
 
   const handleClose = () => {
     setName('');
     setNotes('');
-    setPendingMedia([]);
     onClose();
-  };
-
-  const addMediaAsset = (asset: ImagePicker.ImagePickerAsset, fallbackType: string, fallbackExt: string, mediaType: 'photo' | 'video') => {
-    setPendingMedia(prev => [...prev, {
-      uri: asset.uri,
-      type: asset.mimeType || fallbackType,
-      fileName: asset.fileName || `${mediaType}_${Date.now()}${fallbackExt}`,
-      mediaType,
-    }]);
-  };
-
-  const launchCamera = async (mediaTypes: ('images' | 'videos')[], mediaType: 'photo' | 'video', fallbackType: string, fallbackExt: string) => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Camera access is required.');
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes, quality: 0.8 });
-    if (!result.canceled && result.assets[0]) {
-      addMediaAsset(result.assets[0], fallbackType, fallbackExt, mediaType);
-    }
-  };
-
-  const launchLibrary = async (mediaTypes: ('images' | 'videos')[], mediaType: 'photo' | 'video', fallbackType: string, fallbackExt: string) => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Photo library access is required.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes, quality: 0.8 });
-    if (!result.canceled && result.assets[0]) {
-      addMediaAsset(result.assets[0], fallbackType, fallbackExt, mediaType);
-    }
-  };
-
-  const handlePickPhoto = () => {
-    Alert.alert('Add Photo', 'Choose a source', [
-      { text: 'Camera', onPress: () => launchCamera(['images'], 'photo', 'image/jpeg', '.jpg') },
-      { text: 'Photo Library', onPress: () => launchLibrary(['images'], 'photo', 'image/jpeg', '.jpg') },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
-
-  const handlePickVideo = () => {
-    Alert.alert('Add Video', 'Choose a source', [
-      { text: 'Camera', onPress: () => launchCamera(['videos'], 'video', 'video/mp4', '.mp4') },
-      { text: 'Video Library', onPress: () => launchLibrary(['videos'], 'video', 'video/mp4', '.mp4') },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
-
-  const handleRecordAudio = async () => {
-    if (isRecording && recordingRef.current) {
-      setIsRecording(false);
-      try {
-        await recordingRef.current.stopAndUnloadAsync();
-        const uri = recordingRef.current.getURI();
-        recordingRef.current = null;
-        if (uri) {
-          setPendingMedia(prev => [...prev, {
-            uri,
-            type: 'audio/m4a',
-            fileName: `audio_${Date.now()}.m4a`,
-            mediaType: 'audio' as const,
-          }]);
-        }
-      } catch (err) {
-        console.error('Failed to stop recording:', err);
-      }
-      return;
-    }
-
-    const { status } = await Audio.requestPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Microphone access is required to record audio.');
-      return;
-    }
-    try {
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      recordingRef.current = recording;
-      setIsRecording(true);
-    } catch (err) {
-      console.error('Failed to start recording:', err);
-      Alert.alert('Error', 'Could not start audio recording.');
-    }
-  };
-
-  const removeMedia = (index: number) => {
-    setPendingMedia(prev => prev.filter((_, i) => i !== index));
   };
 
   const lat = currentLocation?.latitude ?? 0;
@@ -203,48 +100,6 @@ function AddWaypointModal({ visible, onClose, onSave, currentLocation }: {
             onChangeText={setNotes}
           />
 
-          <View style={styles.mediaButtons}>
-            <TouchableOpacity style={styles.mediaButton} onPress={handlePickPhoto}>
-              <Text style={styles.mediaButtonIcon}>📷</Text>
-              <Text style={styles.mediaButtonText}>Photo</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.mediaButton} onPress={handlePickVideo}>
-              <Text style={styles.mediaButtonIcon}>🎥</Text>
-              <Text style={styles.mediaButtonText}>Video</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.mediaButton, isRecording && { borderColor: Colors.hotPink, backgroundColor: `${Colors.hotPink}20` }]}
-              onPress={handleRecordAudio}
-            >
-              <Text style={styles.mediaButtonIcon}>{isRecording ? '⏹️' : '🎤'}</Text>
-              <Text style={[styles.mediaButtonText, isRecording && { color: Colors.hotPink }]}>
-                {isRecording ? 'Stop' : 'Audio'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {pendingMedia.length > 0 && (
-            <View style={styles.pendingMediaList}>
-              {pendingMedia.map((m, i) => (
-                <View key={i} style={styles.pendingMediaItem}>
-                  {m.mediaType === 'photo' ? (
-                    <Image source={{ uri: m.uri }} style={styles.pendingThumb} />
-                  ) : (
-                    <View style={[styles.pendingThumb, { justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.inputBg }]}>
-                      <Text style={{ fontSize: 16 }}>{m.mediaType === 'video' ? '🎥' : '🎤'}</Text>
-                    </View>
-                  )}
-                  <Text style={[Typography.caption, { flex: 1, color: Colors.textSecondary }]} numberOfLines={1}>
-                    {m.fileName}
-                  </Text>
-                  <TouchableOpacity onPress={() => removeMedia(i)}>
-                    <Text style={{ fontSize: 16, color: Colors.hotPink }}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )}
-
           <View style={styles.modalActions}>
             <TouchableOpacity style={styles.cancelButton} onPress={handleClose}>
               <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -257,13 +112,6 @@ function AddWaypointModal({ visible, onClose, onSave, currentLocation }: {
       </ScrollView>
     </View>
   );
-}
-
-interface PendingMedia {
-  uri: string;
-  type: string;
-  fileName: string;
-  mediaType: 'photo' | 'video' | 'audio';
 }
 
 export default function WriteScreen() {
@@ -296,47 +144,28 @@ export default function WriteScreen() {
       .finally(() => setIsLoadingWaypoints(false));
   }, []);
 
-  const handleSaveWaypoint = async (name: string, notes: string, pendingMedia: PendingMedia[]) => {
+  const handleSaveWaypoint = async (name: string, notes: string) => {
     const lat = currentLocation?.latitude ?? 0;
     const lng = currentLocation?.longitude ?? 0;
 
     try {
       const result = await api.addScoutedWaypoint({ name, notes, lat, lng });
-      const waypointId = result.id || `sw_${Date.now()}`;
-
-      // Upload each media file to the server
-      const photos: string[] = [];
-      const videos: string[] = [];
-      const audioRecordings: string[] = [];
-
-      for (const media of pendingMedia) {
-        try {
-          const uploadResult = await api.uploadScoutedMedia(
-            waypointId, media.uri, media.type, media.fileName
-          );
-          if (media.mediaType === 'photo') photos.push(uploadResult.mediaUrl);
-          else if (media.mediaType === 'video') videos.push(uploadResult.mediaUrl);
-          else audioRecordings.push(uploadResult.mediaUrl);
-        } catch (uploadErr) {
-          console.warn('Media upload failed for', media.fileName, uploadErr);
-        }
-      }
-
       const newWaypoint: ScoutedWaypoint = {
-        id: waypointId,
+        id: result.id || `sw_${Date.now()}`,
         userId: result.userId || '',
         name,
         notes,
         location: { latitude: lat, longitude: lng },
-        photos,
-        videos,
-        audioRecordings,
+        // Media columns kept on the model for forward compatibility (see
+        // tracker entry F3); always empty as far as this screen knows.
+        photos: [],
+        videos: [],
+        audioRecordings: [],
         createdAt: new Date(),
       };
       addScoutedWaypoint(newWaypoint);
       setShowAddModal(false);
-      const mediaCount = photos.length + videos.length + audioRecordings.length;
-      Alert.alert('Saved!', `Waypoint saved${mediaCount > 0 ? ` with ${mediaCount} media file(s)` : ''}.`);
+      Alert.alert('Saved!', 'Waypoint saved.');
     } catch {
       const newWaypoint: ScoutedWaypoint = {
         id: `sw_${Date.now()}`,
@@ -351,7 +180,7 @@ export default function WriteScreen() {
       };
       addScoutedWaypoint(newWaypoint);
       setShowAddModal(false);
-      Alert.alert('Saved Locally', 'Waypoint saved locally. Media will upload when connected.');
+      Alert.alert('Saved Locally', 'Waypoint saved locally. It will sync when connected.');
     }
   };
 
@@ -533,15 +362,6 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: Spacing.sm,
   },
-  waypointMeta: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginTop: Spacing.xs,
-  },
-  metaTag: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-  },
   emptyState: {
     alignItems: 'center',
     paddingVertical: Spacing.xl,
@@ -589,29 +409,6 @@ const styles = StyleSheet.create({
     height: 80,
     textAlignVertical: 'top',
   },
-  mediaButtons: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-    marginTop: Spacing.lg,
-  },
-  mediaButton: {
-    flex: 1,
-    backgroundColor: Colors.inputBg,
-    padding: Spacing.md,
-    borderRadius: 8,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-  },
-  mediaButtonIcon: {
-    fontSize: 24,
-  },
-  mediaButtonText: {
-    color: Colors.textSecondary,
-    fontSize: 12,
-    marginTop: 4,
-    textTransform: 'uppercase',
-  },
   modalActions: {
     flexDirection: 'row',
     gap: Spacing.md,
@@ -643,24 +440,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1,
-  },
-  pendingMediaList: {
-    marginTop: Spacing.md,
-    gap: Spacing.sm,
-  },
-  pendingMediaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: Colors.inputBg,
-    borderRadius: 8,
-    padding: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  pendingThumb: {
-    width: 36,
-    height: 36,
-    borderRadius: 6,
   },
 });

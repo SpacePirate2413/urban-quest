@@ -68,9 +68,18 @@ export function CreateTab({ questId }) {
 
   const selectedScene = quest.scenes.find(s => s.id === selectedSceneId);
 
-  const waypointOptions = [
-    ...quest.waypoints.map(wp => ({ value: wp.id, label: wp.name })),
-    { value: '__THE_END__', label: '\uD83C\uDFC1 The End' },
+  // Choice-destination dropdown: lists every *scene* in the quest so the
+  // creator can branch to a specific scene even when two scenes share a
+  // waypoint, plus the END sentinel that the mobile player treats as
+  // "quest finished, prompt for review". Sentinel must match END_SCENE_ID
+  // in apps/api/src/features/quests/quests.service.ts.
+  const sceneDestinationOptions = [
+    ...quest.scenes.map((s, i) => {
+      const wp = quest.waypoints.find((w) => w.id === s.waypointId);
+      const wpName = wp?.name || 'no location';
+      return { value: s.id, label: `Scene ${i + 1} \u2014 ${wpName}` };
+    }),
+    { value: '__END__', label: '\uD83C\uDFC1 End Quest' },
   ];
 
   // Get media for a scene: pending local file OR already-uploaded server file
@@ -207,18 +216,27 @@ export function CreateTab({ questId }) {
 
   const handleAddChoice = () => {
     if (!selectedScene) return;
+    // Default the destination to the END sentinel — clearest intent for the
+    // creator to override, and never picks the wrong scene by accident.
     const newChoices = [
       ...selectedScene.choices,
-      { text: '', waypointId: quest.waypoints[0]?.id || '' },
+      { text: '', sceneId: '__END__' },
     ];
     handleUpdateScene('choices', newChoices);
   };
 
   const handleUpdateChoice = (index, field, value) => {
     if (!selectedScene) return;
-    const newChoices = selectedScene.choices.map((c, i) =>
-      i === index ? { ...c, [field]: value } : c
-    );
+    const newChoices = selectedScene.choices.map((c, i) => {
+      if (i !== index) return c;
+      // When setting the destination, drop any legacy `waypointId` so we
+      // store the new shape only. Other fields (e.g. `text`) merge as-is.
+      if (field === 'sceneId') {
+        const { waypointId: _legacy, ...rest } = c;
+        return { ...rest, sceneId: value };
+      }
+      return { ...c, [field]: value };
+    });
     handleUpdateScene('choices', newChoices);
   };
 
@@ -243,12 +261,33 @@ export function CreateTab({ questId }) {
       errors.push('At least one scene is required');
     }
 
+    const sceneIds = new Set(quest.scenes.map((s) => s.id));
+    const waypointIds = new Set(quest.waypoints.map((w) => w.id));
+
     quest.scenes.forEach((scene, idx) => {
       const media = getSceneMedia(scene.id);
       if (!media) errors.push(`Scene ${idx + 1}: Media file is required`);
       else if (media.pending && !media.isGenerated) errors.push(`Scene ${idx + 1}: Media file not yet uploaded to server`);
+      if (!scene.script?.trim()) errors.push(`Scene ${idx + 1}: Script is required`);
       if (!scene.question?.trim()) errors.push(`Scene ${idx + 1}: Question is required`);
-      if (!scene.choices || scene.choices.length === 0) errors.push(`Scene ${idx + 1}: At least one choice is required`);
+      if (!scene.waypointId) {
+        errors.push(`Scene ${idx + 1}: Location (waypoint) is required`);
+      }
+      if (!scene.choices || scene.choices.length === 0) {
+        errors.push(`Scene ${idx + 1}: At least one choice is required`);
+      } else {
+        scene.choices.forEach((c, ci) => {
+          if (!c.text?.trim()) {
+            errors.push(`Scene ${idx + 1}, choice ${ci + 1}: Text is required`);
+          }
+          // Accept the new sceneId shape, the END sentinel, or — for legacy
+          // choices that haven't been re-saved yet — a valid waypointId.
+          const target = c.sceneId ?? c.waypointId;
+          if (target !== '__END__' && !sceneIds.has(target) && !waypointIds.has(target)) {
+            errors.push(`Scene ${idx + 1}, choice ${ci + 1}: Pick a destination scene or "End Quest"`);
+          }
+        });
+      }
     });
 
     return errors;
@@ -452,7 +491,10 @@ export function CreateTab({ questId }) {
                 </div>
               </div>
 
-              {/* Waypoint selector */}
+              {/* Waypoint selector — multiple scenes can share a waypoint
+                   (revisits with different content), so all waypoints stay
+                   selectable. Choice destinations point at scenes, not
+                   waypoints, so there's no ambiguity at playback. */}
               <Select
                 label="Location (Waypoint)"
                 value={selectedScene.waypointId || ''}
@@ -586,11 +628,11 @@ export function CreateTab({ questId }) {
                           placeholder={`Choice ${index + 1} text...`}
                         />
                       </div>
-                      <div className="w-44">
+                      <div className="w-56">
                         <Select
-                          value={choice.waypointId || ''}
-                          onChange={(e) => handleUpdateChoice(index, 'waypointId', e.target.value)}
-                          options={waypointOptions}
+                          value={choice.sceneId || choice.waypointId || ''}
+                          onChange={(e) => handleUpdateChoice(index, 'sceneId', e.target.value)}
+                          options={sceneDestinationOptions}
                           placeholder="\u2192 Destination"
                         />
                       </div>

@@ -184,10 +184,20 @@ class ApiClient {
     );
   }
 
+  async getMyReviews() {
+    return this.request<any[]>('/reviews/my');
+  }
+
   async submitReview(questId: string, rating: number, comment?: string) {
     return this.request<any>('/reviews', {
       method: 'POST',
       body: JSON.stringify({ questId, rating, comment }),
+    });
+  }
+
+  async deleteReview(questId: string) {
+    return this.request<{ success: boolean }>(`/reviews/${questId}`, {
+      method: 'DELETE',
     });
   }
 

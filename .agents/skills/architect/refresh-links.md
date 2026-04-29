@@ -1,6 +1,6 @@
 # Refresh Links
 
-Start all three apps with the latest code and open their URLs.
+Start all three apps with the latest code and give clickable links to the Creator Station and Admin Portal's URLs.
 
 ## Steps
 

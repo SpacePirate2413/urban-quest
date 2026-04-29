@@ -75,10 +75,17 @@ export const useWriterStore = create((set, get) => ({
   submissions: persistedState.submissions,
 
   scoutedWaypoints: [],
+  // `scoutedWaypointsLoaded` previously gated re-fetch, which caused stale
+  // data when waypoints saved in the mobile app didn't appear here without
+  // a full page reload. We keep the flag for the empty-vs-not-yet-loaded
+  // distinction in the UI (so the empty state doesn't flash before the
+  // first fetch completes) but no longer skip subsequent fetches.
   scoutedWaypointsLoaded: false,
+  isLoadingScoutedWaypoints: false,
 
   // Scouted Waypoints actions
   loadScoutedWaypoints: async () => {
+    set({ isLoadingScoutedWaypoints: true });
     try {
       const waypoints = await api.getMyScoutedWaypoints();
       // Parse JSON string fields from the API
@@ -88,10 +95,14 @@ export const useWriterStore = create((set, get) => ({
         videos: wp.videos ? JSON.parse(wp.videos) : [],
         audioRecordings: wp.audioRecordings ? JSON.parse(wp.audioRecordings) : [],
       }));
-      set({ scoutedWaypoints: parsed, scoutedWaypointsLoaded: true });
+      set({
+        scoutedWaypoints: parsed,
+        scoutedWaypointsLoaded: true,
+        isLoadingScoutedWaypoints: false,
+      });
     } catch (err) {
       console.warn('Failed to load scouted waypoints:', err.message);
-      set({ scoutedWaypointsLoaded: true });
+      set({ scoutedWaypointsLoaded: true, isLoadingScoutedWaypoints: false });
     }
   },
 

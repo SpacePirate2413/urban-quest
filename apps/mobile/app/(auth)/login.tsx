@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
@@ -25,6 +26,11 @@ WebBrowser.maybeCompleteAuthSession();
 const PRIVACY_POLICY_URL = 'https://urbanquestapp.com/privacy-policy/';
 const TERMS_URL = 'https://urbanquestapp.com/terms-conditions/';
 
+// Bump the suffix when the live Terms / Privacy Policy materially change,
+// so users have to re-acknowledge the new version. Today both docs are
+// effective 2026-04-26 — that's where the date in the key comes from.
+const TERMS_ACCEPTED_KEY = 'terms_accepted:2026-04-26';
+
 // Default email/name values match the creator-station's dev login so the
 // same Brent can sign in on both surfaces and see the same account.
 const DEV_USER = { email: 'creator@urbanquest.dev', name: 'Test Creator' };
@@ -36,6 +42,35 @@ export default function LoginScreen() {
   const [name, setName] = useState(DEV_USER.name);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [appleAvailable, setAppleAvailable] = useState(false);
+
+  // Restore the user's prior acceptance of Terms + Privacy Policy. Once
+  // they've checked the box once, it stays checked across sign-outs and
+  // launches — until the storage key changes (i.e. the live policy gets
+  // a new effective date). That matches the App Store / Play Store
+  // expectation that consent persists between sessions but a material
+  // policy change requires a fresh acknowledgement.
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(TERMS_ACCEPTED_KEY)
+      .then((value) => {
+        if (!cancelled && value === 'true') setAccepted(true);
+      })
+      .catch(() => {
+        // No-op — the user can still tap to accept; we just don't
+        // pre-fill from a corrupted storage read.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggleAccepted = () => {
+    setAccepted((prev) => {
+      const next = !prev;
+      AsyncStorage.setItem(TERMS_ACCEPTED_KEY, next ? 'true' : 'false').catch(() => {});
+      return next;
+    });
+  };
 
   // Apple Sign In is iOS-only at the system level. Hide the button on
   // platforms where it can't function rather than render a button that
@@ -58,10 +93,19 @@ export default function LoginScreen() {
   // returns an idToken we can hand to /users/auth/mobile/token for backend
   // verification. Each platform needs its own OAuth client ID — see
   // EXPO_PUBLIC_GOOGLE_CLIENT_ID_* env vars and the README.
+  //
+  // The hook validates that the platform-specific client ID is a non-empty
+  // string at init time and throws otherwise, which would crash the entire
+  // screen before the user even sees it. To keep the screen usable while
+  // those env vars are still being set up (Q-C2 in the tracker), we pass a
+  // recognizable placeholder. The button's onPress handler still checks the
+  // real env var and shows a friendly "not configured" Alert before
+  // attempting any actual auth, so the placeholder never reaches Google.
+  const PLACEHOLDER_CID = 'not-configured.apps.googleusercontent.com';
   const [, googleResponse, promptGoogle] = Google.useIdTokenAuthRequest({
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB,
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS || PLACEHOLDER_CID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID || PLACEHOLDER_CID,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB || PLACEHOLDER_CID,
     scopes: ['openid', 'email', 'profile'],
   });
 
@@ -196,7 +240,7 @@ export default function LoginScreen() {
         <View style={styles.bottomContainer}>
           <TouchableOpacity
             style={styles.consentRow}
-            onPress={() => setAccepted((prev) => !prev)}
+            onPress={toggleAccepted}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: accepted }}
             accessibilityLabel="I agree to the Terms and Conditions and Privacy Policy"

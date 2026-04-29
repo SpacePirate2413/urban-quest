@@ -1,14 +1,11 @@
 import {
     Bookmark,
-    Camera,
     ChevronRight,
-    FileAudio,
     MapPin,
-    Play,
     Plus,
     PlusCircle,
+    RefreshCw,
     Trash2,
-    Video,
     X
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -23,6 +20,7 @@ export function WaypointEditor({ questId }) {
     deleteWaypoint,
     scoutedWaypoints,
     scoutedWaypointsLoaded,
+    isLoadingScoutedWaypoints,
     loadScoutedWaypoints,
     deleteScoutedWaypoint,
   } = useWriterStore();
@@ -30,14 +28,16 @@ export function WaypointEditor({ questId }) {
   const [selectedWaypointId, setSelectedWaypointId] = useState(null);
   const [showSavedPanel, setShowSavedPanel] = useState(false);
   const [expandedScoutId, setExpandedScoutId] = useState(null);
-  const [mediaPreview, setMediaPreview] = useState(null);
   const mapRef = useRef(null);
 
+  // Refetch every time the saved-waypoints panel is opened so updates from
+  // the mobile app appear without a page reload. The previous gate
+  // (scoutedWaypointsLoaded) cached the first response forever.
   useEffect(() => {
-    if (showSavedPanel && !scoutedWaypointsLoaded) {
+    if (showSavedPanel) {
       loadScoutedWaypoints();
     }
-  }, [showSavedPanel, scoutedWaypointsLoaded, loadScoutedWaypoints]);
+  }, [showSavedPanel, loadScoutedWaypoints]);
 
   if (!quest) return null;
 
@@ -82,7 +82,6 @@ export function WaypointEditor({ questId }) {
       notes: scouted.notes || '',
       lat: scouted.lat,
       lng: scouted.lng,
-      photo: scouted.photos?.[0] || null,
     });
     setShowSavedPanel(false);
   };
@@ -199,14 +198,28 @@ export function WaypointEditor({ questId }) {
                   <h3 className="font-bangers text-lg text-white">Saved Waypoints</h3>
                   <Badge variant="yellow">{scoutedWaypoints.length}</Badge>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setShowSavedPanel(false)}>
-                  <X className="w-4 h-4" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => loadScoutedWaypoints()}
+                    disabled={isLoadingScoutedWaypoints}
+                    title="Refresh from mobile"
+                  >
+                    <RefreshCw
+                      className={`w-4 h-4 ${isLoadingScoutedWaypoints ? 'animate-spin' : ''}`}
+                    />
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setShowSavedPanel(false)}>
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                {!scoutedWaypointsLoaded && (
+                {!scoutedWaypointsLoaded && isLoadingScoutedWaypoints && (
                   <div className="text-center py-8">
+                    <RefreshCw className="w-6 h-6 text-cyan animate-spin mx-auto mb-2" />
                     <p className="text-sm text-white/50">Loading...</p>
                   </div>
                 )}
@@ -216,17 +229,18 @@ export function WaypointEditor({ questId }) {
                     <Bookmark className="w-10 h-10 text-white/20 mx-auto mb-3" />
                     <p className="font-bangers text-white/70">No saved waypoints</p>
                     <p className="text-xs text-white/50 mt-1">
-                      Use Scout Mode in the mobile app to save locations
+                      Use Scout Mode in the mobile app to save locations. Tap the refresh icon
+                      above if you just saved one.
                     </p>
                   </div>
                 )}
 
+                {/* Photo / video / audio attachments removed from this view
+                    on 2026-04-29 (mobile capture is also disabled — see
+                    tracker entry F3). The columns still come back from the
+                    API; they're just not rendered. */}
                 {scoutedWaypoints.map((sw) => {
                   const isExpanded = expandedScoutId === sw.id;
-                  const photoCount = sw.photos?.length || 0;
-                  const videoCount = sw.videos?.length || 0;
-                  const audioCount = sw.audioRecordings?.length || 0;
-                  const hasMedia = photoCount + videoCount + audioCount > 0;
 
                   return (
                     <Card
@@ -238,41 +252,14 @@ export function WaypointEditor({ questId }) {
                         onClick={() => setExpandedScoutId(isExpanded ? null : sw.id)}
                         className="w-full p-3 text-left flex items-start gap-3"
                       >
-                        {sw.photos?.[0] ? (
-                          <img
-                            src={sw.photos[0]}
-                            alt={sw.name}
-                            className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
-                          />
-                        ) : (
-                          <div className="w-12 h-12 rounded-lg bg-input-bg flex items-center justify-center flex-shrink-0">
-                            <MapPin className="w-5 h-5 text-white/30" />
-                          </div>
-                        )}
+                        <div className="w-12 h-12 rounded-lg bg-input-bg flex items-center justify-center flex-shrink-0">
+                          <MapPin className="w-5 h-5 text-white/30" />
+                        </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-bangers text-sm text-white truncate">{sw.name}</p>
                           <p className="text-xs text-white/50 mt-0.5">
                             {sw.lat?.toFixed(4)}°, {sw.lng?.toFixed(4)}°
                           </p>
-                          {hasMedia && (
-                            <div className="flex items-center gap-2 mt-1">
-                              {photoCount > 0 && (
-                                <span className="text-[10px] text-white/50 flex items-center gap-0.5">
-                                  <Camera className="w-3 h-3" /> {photoCount}
-                                </span>
-                              )}
-                              {videoCount > 0 && (
-                                <span className="text-[10px] text-white/50 flex items-center gap-0.5">
-                                  <Video className="w-3 h-3" /> {videoCount}
-                                </span>
-                              )}
-                              {audioCount > 0 && (
-                                <span className="text-[10px] text-white/50 flex items-center gap-0.5">
-                                  <FileAudio className="w-3 h-3" /> {audioCount}
-                                </span>
-                              )}
-                            </div>
-                          )}
                         </div>
                         <ChevronRight
                           className={`w-4 h-4 text-white/30 flex-shrink-0 transition-transform ${
@@ -288,65 +275,6 @@ export function WaypointEditor({ questId }) {
                             <p className="text-xs text-white/70 leading-relaxed bg-input-bg rounded-md p-2">
                               {sw.notes}
                             </p>
-                          )}
-
-                          {/* Photo previews */}
-                          {photoCount > 0 && (
-                            <div>
-                              <p className="font-bangers text-[10px] uppercase text-white/50 mb-1.5">
-                                Photos
-                              </p>
-                              <div className="flex gap-2 overflow-x-auto">
-                                {sw.photos.map((url, i) => (
-                                  <img
-                                    key={i}
-                                    src={url}
-                                    alt={`${sw.name} photo ${i + 1}`}
-                                    className="w-20 h-20 rounded-lg object-cover flex-shrink-0 cursor-pointer border border-panel-border hover:border-cyan transition-colors"
-                                    onClick={() => setMediaPreview({ type: 'image', url })}
-                                  />
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Video previews */}
-                          {videoCount > 0 && (
-                            <div>
-                              <p className="font-bangers text-[10px] uppercase text-white/50 mb-1.5">
-                                Videos
-                              </p>
-                              <div className="flex gap-2 overflow-x-auto">
-                                {sw.videos.map((url, i) => (
-                                  <button
-                                    key={i}
-                                    onClick={() => setMediaPreview({ type: 'video', url })}
-                                    className="w-20 h-20 rounded-lg bg-input-bg flex items-center justify-center flex-shrink-0 border border-panel-border hover:border-purple transition-colors"
-                                  >
-                                    <Play className="w-6 h-6 text-purple" />
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Audio previews */}
-                          {audioCount > 0 && (
-                            <div>
-                              <p className="font-bangers text-[10px] uppercase text-white/50 mb-1.5">
-                                Audio
-                              </p>
-                              <div className="space-y-1.5">
-                                {sw.audioRecordings.map((url, i) => (
-                                  <audio
-                                    key={i}
-                                    src={url}
-                                    controls
-                                    className="w-full h-8"
-                                  />
-                                ))}
-                              </div>
-                            </div>
                           )}
 
                           <p className="text-[10px] text-white/40">
@@ -450,36 +378,6 @@ export function WaypointEditor({ questId }) {
         </Card>
       </div>
 
-      {/* ── Media preview overlay ────────────────────────────────────── */}
-      {mediaPreview && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-navy-deep/90 backdrop-blur-sm"
-          onClick={() => setMediaPreview(null)}
-        >
-          <div className="relative max-w-3xl max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => setMediaPreview(null)}
-              className="absolute -top-3 -right-3 z-10 w-8 h-8 rounded-full bg-panel border border-panel-border flex items-center justify-center hover:bg-red-500/20 transition-colors"
-            >
-              <X className="w-4 h-4 text-white" />
-            </button>
-            {mediaPreview.type === 'image' ? (
-              <img
-                src={mediaPreview.url}
-                alt="Preview"
-                className="max-w-full max-h-[80vh] rounded-lg border border-panel-border"
-              />
-            ) : (
-              <video
-                src={mediaPreview.url}
-                controls
-                autoPlay
-                className="max-w-full max-h-[80vh] rounded-lg border border-panel-border"
-              />
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
