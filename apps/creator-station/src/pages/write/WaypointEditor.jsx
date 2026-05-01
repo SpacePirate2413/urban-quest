@@ -19,7 +19,9 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import { Badge, Button, Card, Input, Textarea } from '../../components/ui';
+import { api } from '../../services/api';
 import { useWriterStore } from '../../store/useWriterStore';
+import { SaveButton } from './SaveButton';
 
 // Leaflet ships its marker icons as relative URLs that don't survive Vite's
 // bundler. Re-point them at the imported asset URLs once when this module
@@ -35,23 +37,34 @@ const DEFAULT_CENTER = [39.5, -98.35]; // continental US center
 const DEFAULT_ZOOM = 4;
 
 /**
- * Hits OpenStreetMap's Nominatim geocoder. Free, no API key, but the public
- * endpoint asks for a 1-req/sec ceiling and a real User-Agent. Fine for a
- * dev/creator tool. If we ever ship this to high-volume users we'll want to
- * proxy through our own API or swap to a paid provider.
+ * Hits OpenStreetMap's Nominatim `/search` endpoint and returns up to
+ * `limit` matches. Free, no API key, but the public endpoint asks for
+ * 1-req/sec ceilings — debounce calls if you're wiring this to keystrokes.
+ * If we ever ship this to high-volume users we'll want to proxy through
+ * our own API or swap to a paid provider.
  */
-async function geocode(query) {
-  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`;
-  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+async function fetchSuggestions(query, { limit = 5, signal } = {}) {
+  if (!query || query.trim().length < 3) return [];
+  const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=${limit}&q=${encodeURIComponent(query)}`;
+  const res = await fetch(url, { signal, headers: { Accept: 'application/json' } });
   if (!res.ok) throw new Error(`Geocoder returned ${res.status}`);
   const data = await res.json();
-  if (!Array.isArray(data) || data.length === 0) return null;
-  const hit = data[0];
-  return {
-    lat: parseFloat(hit.lat),
-    lng: parseFloat(hit.lon),
-    label: hit.display_name,
-  };
+  if (!Array.isArray(data)) return [];
+  return data
+    .map((d, i) => {
+      const lat = parseFloat(d.lat);
+      const lng = parseFloat(d.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      const parts = String(d.display_name ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+      return {
+        key: String(d.place_id ?? `${i}-${lat},${lng}`),
+        label: parts[0] || String(d.display_name ?? 'Unnamed'),
+        sublabel: parts.slice(1, 4).join(', ') || undefined,
+        lat,
+        lng,
+      };
+    })
+    .filter(Boolean);
 }
 
 // Captures clicks on the map and forwards them to a handler. Has to live
@@ -99,6 +112,11 @@ export function WaypointEditor({ questId }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchError, setSearchError] = useState(null);
+
+  // Autocomplete dropdown state. `suggestionsOpen` controls visibility so
+  // we can hide the dropdown after picking, submitting, or clicking out.
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
 
   // The parent tells the map "go here" by mutating this object. The
   // FlyToController child reacts to the change and animates the camera.
@@ -158,6 +176,31 @@ export function WaypointEditor({ questId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Debounced autocomplete fetch — kicks 350ms after the last keystroke
+  // and only when the query is at least 3 chars long. Aborts any in-flight
+  // request if a newer keystroke lands so we don't pile up Nominatim hits.
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (q.length < 3) {
+      setSuggestions([]);
+      return;
+    }
+    const ctrl = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const items = await fetchSuggestions(q, { limit: 5, signal: ctrl.signal });
+        if (!ctrl.signal.aborted) setSuggestions(items);
+      } catch {
+        // Network blip / cancellation — leave previous list intact so the
+        // dropdown doesn't flicker between every keystroke.
+      }
+    }, 350);
+    return () => {
+      ctrl.abort();
+      clearTimeout(timer);
+    };
+  }, [searchQuery]);
+
   if (!quest) return null;
 
   const selectedWaypoint = quest.waypoints.find(wp => wp.id === selectedWaypointId);
@@ -180,19 +223,36 @@ export function WaypointEditor({ questId }) {
     addWaypoint(questId, { lat, lng });
   };
 
+  const pickSuggestion = (s) => {
+    setFlyTarget({ lat: s.lat, lng: s.lng, zoom: 13 });
+    setSearchQuery(s.label);
+    setSuggestions([]);
+    setSuggestionsOpen(false);
+    setSearchError(null);
+  };
+
   const handleSearch = async (e) => {
     e?.preventDefault?.();
     const q = searchQuery.trim();
     if (!q) return;
+    setSuggestionsOpen(false);
+    // If autocomplete already has results visible, treat enter / click as
+    // "pick the top one" — that's what the creator has been seeing.
+    if (suggestions.length > 0) {
+      pickSuggestion(suggestions[0]);
+      return;
+    }
+    // Otherwise fall back to a one-shot fetch (typed-and-hit-return faster
+    // than the debounce, or the dropdown wasn't shown).
     setSearchBusy(true);
     setSearchError(null);
     try {
-      const hit = await geocode(q);
-      if (!hit) {
+      const items = await fetchSuggestions(q, { limit: 1 });
+      if (items.length === 0) {
         setSearchError(`No results for "${q}".`);
         return;
       }
-      setFlyTarget({ lat: hit.lat, lng: hit.lng, zoom: 13 });
+      pickSuggestion(items[0]);
     } catch (err) {
       setSearchError(err?.message ?? 'Search failed.');
     } finally {
@@ -251,14 +311,22 @@ export function WaypointEditor({ questId }) {
     <div className="flex gap-6 h-[calc(100vh-220px)] min-h-[500px]">
       {/* ── Map panel ────────────────────────────────────────────────── */}
       <div className="flex-1 relative flex flex-col gap-3">
-        {/* Search bar — type any place, geocode via Nominatim, fly the map. */}
-        <form onSubmit={handleSearch} className="flex gap-2 items-center">
+        {/* Search bar with Nominatim autocomplete — pick a city, address,
+             landmark, or POI from the dropdown to fly the map there. */}
+        <form onSubmit={handleSearch} className="flex gap-2 items-center relative z-[500]">
           <div className="flex-1 relative">
             <Search className="w-4 h-4 text-white/40 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                if (!suggestionsOpen) setSuggestionsOpen(true);
+              }}
+              onFocus={() => setSuggestionsOpen(true)}
+              // Close on blur with a tiny delay so a click on a suggestion
+              // row registers before the dropdown disappears.
+              onBlur={() => setTimeout(() => setSuggestionsOpen(false), 150)}
               placeholder="Search a city, address, or landmark…"
               className="w-full bg-input-bg border-[1.5px] border-panel-border rounded-lg pl-9 pr-9 py-2.5 text-white placeholder:text-white/40 focus:outline-none focus:border-cyan transition-colors"
             />
@@ -268,11 +336,44 @@ export function WaypointEditor({ questId }) {
                 onClick={() => {
                   setSearchQuery('');
                   setSearchError(null);
+                  setSuggestions([]);
+                  setSuggestionsOpen(false);
                 }}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-white/40 hover:text-white"
               >
                 <X className="w-4 h-4" />
               </button>
+            )}
+
+            {/* Autocomplete dropdown — overlays content below without
+                 reflowing the page. */}
+            {suggestionsOpen && suggestions.length > 0 && (
+              <ul className="absolute left-0 right-0 top-full mt-1 bg-panel border-[1.5px] border-panel-border rounded-lg shadow-2xl shadow-black/50 overflow-hidden z-[600]">
+                {suggestions.map((s) => (
+                  <li key={s.key}>
+                    <button
+                      type="button"
+                      // onMouseDown fires before onBlur, so the dropdown
+                      // is still mounted when we run pickSuggestion.
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        pickSuggestion(s);
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-input-bg/70 border-b border-panel-border/50 last:border-b-0"
+                    >
+                      <div className="flex items-start gap-2">
+                        <Search className="w-3.5 h-3.5 text-white/40 mt-0.5 flex-shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-sm text-white truncate">{s.label}</p>
+                          {s.sublabel && (
+                            <p className="text-[11px] text-white/50 truncate">{s.sublabel}</p>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
           <Button type="submit" variant="cyan" size="sm" disabled={searchBusy || !searchQuery.trim()}>
@@ -477,9 +578,26 @@ export function WaypointEditor({ questId }) {
           ) : selectedWaypoint ? (
             /* ── Edit waypoint panel ───────────────────────────────── */
             <div className="p-4 space-y-4 overflow-y-auto">
-              <div className="flex items-center gap-2 mb-4">
-                <MapPin className="w-5 h-5 text-neon-green" />
-                <h3 className="font-bangers text-lg text-white">Edit Waypoint</h3>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-5 h-5 text-neon-green" />
+                  <h3 className="font-bangers text-lg text-white">Edit Waypoint</h3>
+                </div>
+                {/* Save persists this waypoint's current values to the API.
+                    Auto-save in the store only updates local state for
+                    waypoints, so this button is what makes edits stick
+                    across reloads. */}
+                <SaveButton
+                  onSave={async () => {
+                    await api.updateWaypoint(selectedWaypoint.id, {
+                      name: selectedWaypoint.name,
+                      description: selectedWaypoint.description,
+                      notes: selectedWaypoint.notes,
+                      lat: selectedWaypoint.lat,
+                      lng: selectedWaypoint.lng,
+                    });
+                  }}
+                />
               </div>
 
               <Input

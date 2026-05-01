@@ -20,6 +20,7 @@ import { Badge, Button, Card, Input, Modal, Select } from '../../components/ui';
 import { api } from '../../services/api';
 import { useWriterStore } from '../../store/useWriterStore';
 import { AINarrateModal } from './AINarrateModal';
+import { SaveButton } from './SaveButton';
 
 function SaveIndicator({ sceneId }) {
   const state = useWriterStore((s) => s.sceneSaveState[sceneId]);
@@ -52,7 +53,7 @@ function SaveIndicator({ sceneId }) {
 }
 
 export function CreateTab({ questId }) {
-  const { quests, addScene, updateScene, deleteScene } = useWriterStore();
+  const { quests, addScene, updateScene, deleteScene, flushSceneSave } = useWriterStore();
   const quest = quests.find(q => q.id === questId);
   const [selectedSceneId, setSelectedSceneId] = useState(null);
   const [pendingMedia, setPendingMedia] = useState({});
@@ -385,6 +386,22 @@ export function CreateTab({ questId }) {
                 </div>
                 <div className="flex items-center gap-3">
                   <SaveIndicator sceneId={selectedSceneId} />
+                  <SaveButton
+                    onSave={async () => {
+                      // Force any pending debounced save to land right
+                      // now. If nothing is pending, fall back to a direct
+                      // re-write of the scene's editable fields so the
+                      // creator still gets confirmation it's persisted.
+                      if (selectedSceneId.startsWith('scene-')) return;
+                      await flushSceneSave(selectedSceneId);
+                      await api.updateScene(selectedSceneId, {
+                        script: selectedScene.script || '',
+                        question: selectedScene.question || '',
+                        choices: JSON.stringify(selectedScene.choices || []),
+                        waypointId: selectedScene.waypointId || undefined,
+                      });
+                    }}
+                  />
                   <Button variant="danger-outline" size="sm" onClick={handleDeleteScene}>
                     <Trash2 className="w-4 h-4" />
                   </Button>

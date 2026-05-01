@@ -4,6 +4,23 @@ import { useNavigate } from 'react-router-dom';
 import { Badge, Button, Card, Input, Select, Textarea } from '../../components/ui';
 import { api } from '../../services/api';
 import { GENRES, useWriterStore } from '../../store/useWriterStore';
+import { SaveButton } from './SaveButton';
+
+// Fields the manual Save button writes back to the API. Auto-save already
+// PATCHes individual fields on every keystroke, so the button just does a
+// confirmation re-write of every editable field at once.
+const QUEST_INFO_FIELDS = [
+  'title',
+  'description',
+  'tagline',
+  'coverImage',
+  'genre',
+  'ageRating',
+  'price',
+  'estimatedDuration',
+  'usesAI',
+  'narratorVoiceId',
+];
 
 export function QuestSettings({ questId }) {
   const { quests, updateQuest, deleteQuest } = useWriterStore();
@@ -48,12 +65,27 @@ export function QuestSettings({ questId }) {
     updateQuest(questId, { [field]: value });
   };
 
+  // Confirmation save — re-writes every editable field at once. The store's
+  // updateQuest swallows API errors by design (it falls back to local-only
+  // state with an error message), so for the Save button we hit the API
+  // directly so failures actually throw and surface the "Try again" state.
+  const handleSaveAll = async () => {
+    const payload = {};
+    for (const f of QUEST_INFO_FIELDS) {
+      if (f in quest) payload[f] = quest[f];
+    }
+    await api.updateQuest(questId, payload);
+  };
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <Card className="p-6">
-        <div className="flex items-center gap-2 mb-6">
-          <Settings className="w-5 h-5 text-cyan" />
-          <h3 className="font-bangers text-xl text-white">Quest Details</h3>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            <Settings className="w-5 h-5 text-cyan" />
+            <h3 className="font-bangers text-xl text-white">Quest Details</h3>
+          </div>
+          <SaveButton onSave={handleSaveAll} />
         </div>
 
         <div className="space-y-5">

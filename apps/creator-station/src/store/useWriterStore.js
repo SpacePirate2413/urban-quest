@@ -499,6 +499,41 @@ export const useWriterStore = create((set, get) => ({
     }, 500);
   },
 
+  // Bypass the 500ms debounce and write any pending scene updates right
+  // now. Used by the explicit Save button in CreateTab so the creator
+  // gets immediate confirmation instead of waiting on the idle timer.
+  flushSceneSave: async (sceneId) => {
+    if (sceneId.startsWith('scene-')) return; // local-only scenes never round-trip
+    const entry = sceneSaveTimers[sceneId];
+    const payload = entry?.pending;
+    if (!payload) return; // nothing pending — already in sync
+    if (entry.timer) {
+      clearTimeout(entry.timer);
+      entry.timer = null;
+    }
+    entry.pending = null;
+    set((state) => ({
+      sceneSaveState: { ...state.sceneSaveState, [sceneId]: { status: 'saving' } },
+    }));
+    try {
+      await api.updateScene(sceneId, payload);
+      set((state) => ({
+        sceneSaveState: {
+          ...state.sceneSaveState,
+          [sceneId]: { status: 'saved', savedAt: Date.now() },
+        },
+      }));
+    } catch (err) {
+      set((state) => ({
+        sceneSaveState: {
+          ...state.sceneSaveState,
+          [sceneId]: { status: 'error', error: err.message },
+        },
+      }));
+      throw err;
+    }
+  },
+
   deleteScene: async (questId, sceneId) => {
     // Optimistic local removal so the UI snaps immediately.
     set((state) => ({
