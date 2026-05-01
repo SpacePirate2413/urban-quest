@@ -268,7 +268,9 @@ export function CreateTab({ questId }) {
       const media = getSceneMedia(scene.id);
       if (!media) errors.push(`Scene ${idx + 1}: Media file is required`);
       else if (media.pending && !media.isGenerated) errors.push(`Scene ${idx + 1}: Media file not yet uploaded to server`);
-      if (!scene.script?.trim()) errors.push(`Scene ${idx + 1}: Script is required`);
+      // Script is optional. Creators using AI Narrate write a script that
+      // becomes the audio; creators using their own pre-produced media don't
+      // need one. The media file is the gate, not the script.
       if (!scene.question?.trim()) errors.push(`Scene ${idx + 1}: Question is required`);
       if (!scene.waypointId) {
         errors.push(`Scene ${idx + 1}: Location (waypoint) is required`);

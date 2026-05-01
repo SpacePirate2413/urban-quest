@@ -117,7 +117,8 @@ function parsePlayableQuest(data: any): PlayableQuest | string {
 
   const scenes: Scene[] = [];
   for (const s of rawScenes) {
-    if (!s.script?.trim() || !s.question?.trim() || !s.mediaUrl || !s.waypointId) {
+    // Script is optional — see isQuestPlayable in apps/api. Media is the gate.
+    if (!s.question?.trim() || !s.mediaUrl || !s.waypointId) {
       return 'This quest is missing scene data.';
     }
     let rawChoices: { text?: string; sceneId?: string; waypointId?: string }[];
@@ -147,7 +148,7 @@ function parsePlayableQuest(data: any): PlayableQuest | string {
     scenes.push({
       id: s.id,
       waypointId: s.waypointId,
-      script: s.script,
+      script: s.script ?? '',
       question: s.question,
       choices: migratedChoices,
       mediaUrl: fullMediaUrl(s.mediaUrl),
@@ -416,9 +417,11 @@ function ScenePlayer({ scene, onComplete }: { scene: Scene; onComplete: () => vo
         </View>
       </View>
 
-      <View style={styles.scriptContainer}>
-        <Text style={Typography.screenplay}>{scene.script}</Text>
-      </View>
+      {scene.script.trim() ? (
+        <View style={styles.scriptContainer}>
+          <Text style={Typography.screenplay}>{scene.script}</Text>
+        </View>
+      ) : null}
 
       {(finished || progress >= 99) && (
         <TouchableOpacity style={styles.continueButton} onPress={onComplete}>

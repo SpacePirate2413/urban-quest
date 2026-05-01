@@ -173,7 +173,8 @@ export function isQuestPlayable(quest: {
   const sceneIds = new Set(quest.scenes.map((s) => s.id));
 
   for (const scene of quest.scenes) {
-    if (!scene.script?.trim()) return false;
+    // Script is optional — when media is attached, the audio/video is the
+    // scene's content. Question + choices + media remain required.
     if (!scene.question?.trim()) return false;
     if (!scene.mediaUrl) return false;
     let parsed: { text?: string; sceneId?: string; waypointId?: string }[];
