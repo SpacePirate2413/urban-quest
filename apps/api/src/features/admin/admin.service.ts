@@ -36,6 +36,14 @@ export async function getSubmissions(filters: SubmissionFilters = {}, limit = 50
             waypoint: { select: { id: true, name: true } },
           },
         },
+        // Pull the first waypoint by orderIndex so the admin panel can
+        // derive a city label via reverse geocoding when `quest.city`
+        // hasn't been set explicitly.
+        waypoints: {
+          orderBy: { orderIndex: 'asc' },
+          take: 1,
+          select: { id: true, name: true, lat: true, lng: true },
+        },
       },
       orderBy: { updatedAt: 'desc' },
       take: limit,
@@ -59,6 +67,11 @@ export async function getSubmissions(filters: SubmissionFilters = {}, limit = 50
       narratorVoiceId: quest.narratorVoiceId,
       coverImage: quest.coverImage,
       city: quest.city,
+      // Pre-included first waypoint so the admin client can reverse-geocode
+      // it into a city label when `city` itself is empty.
+      firstWaypoint: quest.waypoints[0]
+        ? { lat: quest.waypoints[0].lat, lng: quest.waypoints[0].lng, name: quest.waypoints[0].name }
+        : null,
       estimatedDuration: quest.estimatedDuration,
       submissionStatus: quest.submissionStatus,
       createdAt: quest.createdAt.toISOString(),

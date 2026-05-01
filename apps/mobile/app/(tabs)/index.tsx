@@ -1,13 +1,16 @@
 import { CATEGORIES } from '@/src/data/mockData';
 import { useLocationStore, useQuestStore } from '@/src/store';
 import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
-import { Difficulty, FilterOptions, Quest } from '@/src/types';
+import { Difficulty, FilterOptions, LocationCoords, Quest } from '@/src/types';
+import * as Location from 'expo-location';
 import { router } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
     FlatList,
     Image,
+    Keyboard,
     Modal,
     ScrollView,
     StyleSheet,
@@ -17,6 +20,51 @@ import {
     View
 } from 'react-native';
 import RealMapView, { Marker, Region } from 'react-native-maps';
+
+// Haversine — duplicated from quest/play.tsx because the player tab and
+// the play screen don't share a utils file yet. Cheap and self-contained.
+function haversineMeters(a: LocationCoords, b: LocationCoords): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const R = 6_371_000;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLng = toRad(b.longitude - a.longitude);
+  const lat1 = toRad(a.latitude);
+  const lat2 = toRad(b.latitude);
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
+type Suggestion = { key: string; label: string; sublabel?: string; lat: number; lng: number };
+
+/**
+ * Hits OpenStreetMap Nominatim's `/search` endpoint to suggest places as
+ * the user types. Returns up to 5 matches. No API key, but Nominatim asks
+ * for low-volume use and a real User-Agent — fine for an in-app search.
+ * If we ever rate-limit-out we'll swap to a paid provider.
+ */
+async function fetchSuggestions(query: string, signal: AbortSignal): Promise<Suggestion[]> {
+  if (query.trim().length < 3) return [];
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&addressdetails=1&q=${encodeURIComponent(query)}`;
+  const res = await fetch(url, { signal, headers: { Accept: 'application/json' } });
+  if (!res.ok) return [];
+  const data = await res.json();
+  if (!Array.isArray(data)) return [];
+  return data
+    .map((d: any, i: number): Suggestion | null => {
+      const lat = parseFloat(d.lat);
+      const lng = parseFloat(d.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      const parts = String(d.display_name ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+      return {
+        key: String(d.place_id ?? `${i}-${lat},${lng}`),
+        label: parts[0] || String(d.display_name ?? 'Unnamed'),
+        sublabel: parts.slice(1, 4).join(', ') || undefined,
+        lat,
+        lng,
+      };
+    })
+    .filter((s): s is Suggestion => s !== null);
+}
 
 /**
  * Renders 5 stars filled in proportion to the average rating. `New` is shown
@@ -89,7 +137,20 @@ function QuestCard({ quest, onPress }: { quest: Quest; onPress: () => void }) {
  * is denied or hasn't loaded yet, it falls back to the centroid of the
  * available quests, then to a sensible default.
  */
-function QuestsMap({ quests, onQuestPress, onFilterPress, activeFiltersCount }: { quests: Quest[]; onQuestPress: (quest: Quest) => void; onFilterPress: () => void; activeFiltersCount: number }) {
+function QuestsMap({
+  quests,
+  onQuestPress,
+  onFilterPress,
+  activeFiltersCount,
+  addressLocation,
+}: {
+  quests: Quest[];
+  onQuestPress: (quest: Quest) => void;
+  onFilterPress: () => void;
+  activeFiltersCount: number;
+  /** When set, the map flies here and stays put (instead of recentering on the user). */
+  addressLocation: LocationCoords | null;
+}) {
   const [selectedQuest, setSelectedQuest] = useState<Quest | null>(null);
   const { currentLocation } = useLocationStore();
   const mapRef = useRef<RealMapView>(null);
@@ -133,8 +194,10 @@ function QuestsMap({ quests, onQuestPress, onFilterPress, activeFiltersCount }: 
   }, [currentLocation, mappableQuests]);
 
   // Recenter on the user once we get the first GPS fix (initial region is
-  // captured at mount time and won't update otherwise).
+  // captured at mount time and won't update otherwise). If the user has
+  // searched an address, that takes priority over GPS recentering.
   useEffect(() => {
+    if (addressLocation) return;
     if (currentLocation && mapRef.current) {
       mapRef.current.animateToRegion(
         {
@@ -150,6 +213,22 @@ function QuestsMap({ quests, onQuestPress, onFilterPress, activeFiltersCount }: 
     // the user every time they pan after that.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentLocation == null]);
+
+  // Fly the map to a searched address whenever the user runs the address
+  // search bar — this is what lets a player browse quests in another city.
+  useEffect(() => {
+    if (addressLocation && mapRef.current) {
+      mapRef.current.animateToRegion(
+        {
+          latitude: addressLocation.latitude,
+          longitude: addressLocation.longitude,
+          latitudeDelta: 0.1,
+          longitudeDelta: 0.1,
+        },
+        600,
+      );
+    }
+  }, [addressLocation]);
 
   return (
     <View style={styles.mapContainer}>
@@ -179,6 +258,31 @@ function QuestsMap({ quests, onQuestPress, onFilterPress, activeFiltersCount }: 
             <Text style={styles.filterBadgeText}>{activeFiltersCount}</Text>
           </View>
         )}
+      </TouchableOpacity>
+
+      {/* Locate-me — bottom-left corner. Pans the map back to the player's
+          GPS location. Lifts above the quest preview card when one is
+          showing so it never gets covered. Greyed out (and Alerts) when
+          location permission isn't granted yet. */}
+      <TouchableOpacity
+        style={[styles.locateIconButton, selectedQuest ? { bottom: 110 } : null]}
+        onPress={() => {
+          if (!currentLocation) {
+            Alert.alert('Location unavailable', 'Grant location access to use this button.');
+            return;
+          }
+          mapRef.current?.animateToRegion(
+            {
+              latitude: currentLocation.latitude,
+              longitude: currentLocation.longitude,
+              latitudeDelta: 0.05,
+              longitudeDelta: 0.05,
+            },
+            500,
+          );
+        }}
+      >
+        <Text style={[styles.locateIcon, !currentLocation && { opacity: 0.4 }]}>📍</Text>
       </TouchableOpacity>
 
       <View style={styles.mapCountPill} pointerEvents="none">
@@ -304,23 +408,127 @@ export default function PlayScreen() {
   const [showFilters, setShowFilters] = useState(false);
   const [loadError, setLoadError] = useState(false);
 
+  // Address-search state. When `addressLocation` is set, the map flies
+  // there and the list re-sorts by distance from there — this is how a
+  // player browses quests in a city they aren't currently in.
+  const [addressQuery, setAddressQuery] = useState('');
+  const [addressBusy, setAddressBusy] = useState(false);
+  const [addressLabel, setAddressLabel] = useState('');
+  const [addressLocation, setAddressLocation] = useState<LocationCoords | null>(null);
+
+  // Autocomplete suggestions powered by Nominatim. The dropdown shows the
+  // top results as the user types, debounced 350 ms. `suggestionsOpen`
+  // gates visibility — picking, submitting, or clearing closes the dropdown.
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(true);
+
   useEffect(() => {
     loadQuests().catch(() => setLoadError(true));
   }, []);
 
+  // Debounced suggestions fetch — kicks 350ms after the user stops typing
+  // and only when the query is at least 3 characters. Aborts the previous
+  // request if a new keystroke lands while one is in flight.
+  useEffect(() => {
+    const q = addressQuery.trim();
+    if (q.length < 3) {
+      setSuggestions([]);
+      return;
+    }
+    const ctrl = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const items = await fetchSuggestions(q, ctrl.signal);
+        if (!ctrl.signal.aborted) setSuggestions(items);
+      } catch {
+        // network failure / aborted — leave previous list intact, the user
+        // will still feel the input is responsive.
+      }
+    }, 350);
+    return () => {
+      ctrl.abort();
+      clearTimeout(timer);
+    };
+  }, [addressQuery]);
+
+  const pickSuggestion = useCallback((s: Suggestion) => {
+    setAddressLocation({ latitude: s.lat, longitude: s.lng });
+    setAddressLabel(s.label);
+    setAddressQuery(s.label);
+    setSuggestions([]);
+    setSuggestionsOpen(false);
+    Keyboard.dismiss();
+  }, []);
+
+  const handleAddressSearch = useCallback(async () => {
+    const q = addressQuery.trim();
+    if (!q) return;
+    Keyboard.dismiss();
+    setSuggestionsOpen(false);
+    // Prefer the top autocomplete result if we have one — that's what the
+    // user has been seeing in the dropdown, so submit feels obvious.
+    if (suggestions.length > 0) {
+      pickSuggestion(suggestions[0]);
+      return;
+    }
+    setAddressBusy(true);
+    try {
+      // Fallback to the OS-native geocoder if Nominatim hasn't caught up
+      // (typed-and-hit-return faster than the debounce, network blip, etc).
+      const results = await Location.geocodeAsync(q);
+      if (!results.length) {
+        Alert.alert('Not found', `Couldn't find "${q}". Try a more specific address or city.`);
+        return;
+      }
+      setAddressLocation({ latitude: results[0].latitude, longitude: results[0].longitude });
+      setAddressLabel(q);
+    } catch (err: any) {
+      Alert.alert('Search failed', err?.message ?? 'Could not look up that location.');
+    } finally {
+      setAddressBusy(false);
+    }
+  }, [addressQuery, suggestions, pickSuggestion]);
+
+  const clearAddressSearch = () => {
+    setAddressQuery('');
+    setAddressLabel('');
+    setAddressLocation(null);
+    setSuggestions([]);
+    setSuggestionsOpen(false);
+    Keyboard.dismiss();
+  };
+
   const activeFiltersCount = [filters.priceRange, filters.difficulty, filters.category, filters.minRating].filter(Boolean).length;
 
-  const filteredQuests = quests.filter((quest) => {
-    if (searchQuery && !quest.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    if (filters.priceRange === 'free' && !quest.isFree) return false;
-    if (filters.priceRange === 'under5' && quest.price >= 5) return false;
-    if (filters.priceRange === 'under10' && quest.price >= 10) return false;
-    if (filters.priceRange === 'over10' && quest.price < 10) return false;
-    if (filters.difficulty && quest.difficulty !== filters.difficulty) return false;
-    if (filters.category && quest.category !== filters.category) return false;
-    if (filters.minRating && (quest.averageRating || 0) < filters.minRating) return false;
-    return true;
-  });
+  const filteredQuests = useMemo(() => {
+    const filtered = quests.filter((quest) => {
+      if (searchQuery && !quest.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      if (filters.priceRange === 'free' && !quest.isFree) return false;
+      if (filters.priceRange === 'under5' && quest.price >= 5) return false;
+      if (filters.priceRange === 'under10' && quest.price >= 10) return false;
+      if (filters.priceRange === 'over10' && quest.price < 10) return false;
+      if (filters.difficulty && quest.difficulty !== filters.difficulty) return false;
+      if (filters.category && quest.category !== filters.category) return false;
+      if (filters.minRating && (quest.averageRating || 0) < filters.minRating) return false;
+      return true;
+    });
+    // When an address has been searched, sort closest-to-that-address first
+    // so the player's reason for searching (find quests in city X) is
+    // honored without hard-filtering quests they might still want to see.
+    if (addressLocation) {
+      return filtered
+        .map((q) => ({
+          q,
+          dist:
+            q.firstWaypointLocation && Number.isFinite(q.firstWaypointLocation.latitude)
+              ? haversineMeters(addressLocation, q.firstWaypointLocation)
+              : Number.POSITIVE_INFINITY,
+        }))
+        .sort((a, b) => a.dist - b.dist)
+        .map((entry) => entry.q);
+    }
+    return filtered;
+  }, [quests, searchQuery, filters, addressLocation]);
 
   const handleQuestPress = (quest: Quest) => {
     selectQuest(quest);
@@ -335,7 +543,71 @@ export default function PlayScreen() {
           <Text style={styles.titleGreen}>QUEST</Text>
         </View>
       </View>
-      
+
+      {/* Address search — applies to both Map and List views. The map
+           flies to the searched location; the list sorts by distance
+           from it. Lets a player browse quests in a city they aren't
+           currently in (e.g. planning a trip). */}
+      <View style={styles.addressSearchRow}>
+        <View style={styles.addressSearchBox}>
+          <Text style={styles.addressSearchIcon}>🌎</Text>
+          <TextInput
+            style={styles.addressSearchInput}
+            placeholder="Search a city, address, or landmark…"
+            placeholderTextColor={Colors.textSecondary}
+            value={addressQuery}
+            onChangeText={(text) => {
+              setAddressQuery(text);
+              // Reopen the dropdown the moment the user starts editing
+              // again after picking or dismissing a previous suggestion.
+              if (!suggestionsOpen) setSuggestionsOpen(true);
+            }}
+            onFocus={() => setSuggestionsOpen(true)}
+            onSubmitEditing={handleAddressSearch}
+            returnKeyType="search"
+            autoCorrect={false}
+          />
+          {addressBusy ? (
+            <ActivityIndicator size="small" color={Colors.cyan} />
+          ) : addressQuery ? (
+            <TouchableOpacity onPress={() => setAddressQuery('')}>
+              <Text style={styles.addressClear}>✕</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        {/* Autocomplete dropdown. Sits absolutely under the search box so
+            it overlays the content below without pushing the map down. */}
+        {suggestionsOpen && suggestions.length > 0 && (
+          <View style={styles.suggestionsBox}>
+            {suggestions.map((s) => (
+              <TouchableOpacity
+                key={s.key}
+                style={styles.suggestionRow}
+                onPress={() => pickSuggestion(s)}
+              >
+                <Text style={styles.suggestionLabel} numberOfLines={1}>📍 {s.label}</Text>
+                {s.sublabel ? (
+                  <Text style={styles.suggestionSublabel} numberOfLines={1}>
+                    {s.sublabel}
+                  </Text>
+                ) : null}
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+      {addressLocation && (
+        <View style={styles.addressActiveChip}>
+          <Text style={styles.addressActiveText} numberOfLines={1}>
+            📍 Showing quests near {addressLabel}
+          </Text>
+          <TouchableOpacity onPress={clearAddressSearch} style={styles.addressActiveClear}>
+            <Text style={styles.addressActiveClearText}>Clear ✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <View style={styles.viewToggle}>
         <TouchableOpacity style={[styles.toggleButton, viewMode === 'map' && styles.toggleButtonActive]} onPress={() => setViewMode('map')}>
           <Text style={[styles.toggleText, viewMode === 'map' && styles.toggleTextActive]}>🗺️ Map</Text>
@@ -390,6 +662,7 @@ export default function PlayScreen() {
           onQuestPress={handleQuestPress}
           onFilterPress={() => setShowFilters(true)}
           activeFiltersCount={activeFiltersCount}
+          addressLocation={addressLocation}
         />
       ) : (
         <View style={{ flex: 1 }}>
@@ -440,6 +713,42 @@ const styles = StyleSheet.create({
   titleGreen: { fontFamily: 'System', fontSize: 28, fontWeight: '900', color: Colors.neonGreen, letterSpacing: 1 },
   badge: { backgroundColor: Colors.hotPink, paddingHorizontal: Spacing.sm, paddingVertical: 2, borderRadius: 6, marginLeft: Spacing.sm },
   badgeText: { color: Colors.textPrimary, fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+  // `position: relative` + `zIndex` so the absolutely-positioned suggestions
+  // dropdown layers over the Map/List toggle and the map below.
+  addressSearchRow: { paddingHorizontal: Spacing.lg, marginBottom: Spacing.sm, position: 'relative', zIndex: 20 },
+  addressSearchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.inputBg, borderRadius: 8, paddingHorizontal: Spacing.md, borderWidth: 1.5, borderColor: Colors.border, gap: Spacing.sm },
+  addressSearchIcon: { fontSize: 16 },
+  addressSearchInput: { flex: 1, paddingVertical: Spacing.md, color: Colors.textPrimary, fontSize: 15 },
+  addressClear: { color: Colors.textSecondary, fontSize: 16, paddingHorizontal: 4 },
+  suggestionsBox: {
+    position: 'absolute',
+    top: '100%',
+    left: Spacing.lg,
+    right: Spacing.lg,
+    marginTop: 4,
+    backgroundColor: Colors.surface,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    overflow: 'hidden',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  suggestionRow: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  suggestionLabel: { color: Colors.textPrimary, fontSize: 14, fontWeight: '600' },
+  suggestionSublabel: { color: Colors.textSecondary, fontSize: 12, marginTop: 2 },
+  addressActiveChip: { flexDirection: 'row', alignItems: 'center', marginHorizontal: Spacing.lg, marginBottom: Spacing.sm, backgroundColor: Colors.cyan + '20', borderColor: Colors.cyan, borderWidth: 1.5, borderRadius: 8, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, gap: Spacing.sm },
+  addressActiveText: { flex: 1, color: Colors.cyan, fontSize: 13, fontWeight: '600' },
+  addressActiveClear: { paddingHorizontal: Spacing.sm, paddingVertical: 2 },
+  addressActiveClearText: { color: Colors.cyan, fontSize: 12, fontWeight: '700' },
   viewToggle: { flexDirection: 'row', marginHorizontal: Spacing.lg, marginBottom: Spacing.sm, backgroundColor: Colors.surface, borderRadius: 12, padding: 4, borderWidth: 1.5, borderColor: Colors.border },
   toggleButton: { flex: 1, paddingVertical: Spacing.sm, alignItems: 'center', borderRadius: 10 },
   toggleButtonActive: { backgroundColor: Colors.cyan },
@@ -447,6 +756,8 @@ const styles = StyleSheet.create({
   toggleTextActive: { color: Colors.primaryBackground },
   mapContainer: { flex: 1, margin: Spacing.md, marginTop: 0, borderRadius: 16, overflow: 'hidden', borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.surface },
   filterIconButton: { position: 'absolute', top: Spacing.md, right: Spacing.md, width: 50, height: 50, backgroundColor: Colors.inputBg, borderRadius: 25, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: Colors.border },
+  locateIconButton: { position: 'absolute', bottom: Spacing.md, left: Spacing.md, width: 50, height: 50, backgroundColor: Colors.inputBg, borderRadius: 25, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: Colors.cyan },
+  locateIcon: { fontSize: 24 },
   mapCountPill: { position: 'absolute', top: Spacing.md, left: Spacing.md, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, backgroundColor: Colors.inputBg, borderRadius: 16, borderWidth: 1.5, borderColor: Colors.border },
   filterIcon: { fontSize: 24 },
   filterBadge: { position: 'absolute', top: -4, right: -4, backgroundColor: Colors.hotPink, width: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },

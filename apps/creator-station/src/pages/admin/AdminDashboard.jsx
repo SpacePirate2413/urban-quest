@@ -33,12 +33,82 @@ import { ReportsTab } from './ReportsTab';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
+// Module-level cache for reverse-geocode hits so jumping between quests
+// doesn't pound Nominatim. Key is "lat.toFixed(3),lng.toFixed(3)" — three
+// decimal places of precision (~110 m) is plenty for picking a city.
+const cityByCoord = new Map();
+async function reverseGeocodeCity(lat, lng) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+  if (cityByCoord.has(key)) return cityByCoord.get(key);
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&zoom=10&lat=${lat}&lon=${lng}`;
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const a = data?.address ?? {};
+    // Nominatim normalizes city/town/village inconsistently across regions —
+    // walk down the hierarchy until we find the most specific populated-place
+    // label, then fall back to the country if all else fails.
+    const city =
+      a.city || a.town || a.village || a.municipality || a.hamlet || a.county || a.state || a.country || null;
+    cityByCoord.set(key, city);
+    return city;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Looks up a human-readable city name for the quest. Prefers the
+ * creator-set `quest.city`; otherwise reverse-geocodes the first waypoint.
+ * Returns one of: a string (the city), `''` while loading, or `null` if no
+ * city could be determined.
+ *
+ * The derivation is pure (computed from props on each render) and only the
+ * async geocode result lives in state — that keeps the effect free of
+ * synchronous setState calls.
+ */
+function useDerivedCity(quest) {
+  const explicit = quest?.city || null;
+  const wp = quest?.firstWaypoint;
+  const lat = wp?.lat;
+  const lng = wp?.lng;
+  const hasCoord = Number.isFinite(lat) && Number.isFinite(lng);
+  const key = hasCoord ? `${lat.toFixed(3)},${lng.toFixed(3)}` : null;
+
+  // Holds the async reverse-geocode result, scoped to the lookup key it
+  // came from. Comparing keys means a stale result for the previous quest
+  // can't leak into the currently-selected one.
+  const [resolved, setResolved] = useState({ key: null, city: null });
+
+  useEffect(() => {
+    if (!key || explicit) return; // nothing to look up
+    let cancelled = false;
+    reverseGeocodeCity(lat, lng).then((city) => {
+      if (!cancelled) setResolved({ key, city: city ?? null });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [key, explicit, lat, lng]);
+
+  if (explicit) return explicit;
+  if (!hasCoord) return null;
+  if (resolved.key === key) return resolved.city;
+  return ''; // loading marker
+}
+
 export function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('submissions'); // 'submissions' | 'reports'
   const [questSubmissions, setQuestSubmissions] = useState([]);
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [selectedQuest, setSelectedQuest] = useState(null);
+  // Reverse-geocoded city of the selected quest's first waypoint, used as
+  // the default when `selectedQuest.city` is empty. `''` means loading,
+  // `null` means we couldn't resolve one.
+  const derivedCity = useDerivedCity(selectedQuest);
   const [expandedQuestId, setExpandedQuestId] = useState(null);
   const [selectedScene, setSelectedScene] = useState(null);
   const [reviewNotes, setReviewNotes] = useState('');
@@ -536,13 +606,6 @@ export function AdminDashboard() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <BarChart3 className="w-4 h-4 text-purple flex-shrink-0" />
-                            <div>
-                              <p className="text-[10px] text-white/40 font-bangers uppercase">Difficulty</p>
-                              <p className="text-sm text-white capitalize">{selectedQuest.difficulty || 'medium'}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
                             <Shield className="w-4 h-4 text-yellow flex-shrink-0" />
                             <div>
                               <p className="text-[10px] text-white/40 font-bangers uppercase">Age Rating</p>
@@ -567,7 +630,11 @@ export function AdminDashboard() {
                             <Globe className="w-4 h-4 text-hot-pink flex-shrink-0" />
                             <div>
                               <p className="text-[10px] text-white/40 font-bangers uppercase">City</p>
-                              <p className="text-sm text-white">{selectedQuest.city || 'Not set'}</p>
+                              <p className="text-sm text-white">
+                                {derivedCity === ''
+                                  ? 'Locating…'
+                                  : derivedCity ?? 'Not set'}
+                              </p>
                             </div>
                           </div>
                         </div>
