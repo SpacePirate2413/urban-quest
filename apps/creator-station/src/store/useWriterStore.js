@@ -22,7 +22,8 @@ export const NARRATOR_VOICES = [
 ];
 
 export const GENRES = [
-  'Thriller', 'Mystery', 'Adventure', 'Horror', 'Romance', 'Comedy', 'Sci-Fi', 'Fantasy'
+  'Thriller', 'Mystery', 'Adventure', 'Romance', 'Comedy', 'Sci-Fi', 'Fantasy',
+  'Inspiration', 'Nonfiction', 'News/Education',
 ];
 
 

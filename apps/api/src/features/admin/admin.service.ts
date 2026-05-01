@@ -65,6 +65,7 @@ export async function getSubmissions(filters: SubmissionFilters = {}, limit = 50
       status: quest.status,
       usesAI: quest.usesAI,
       narratorVoiceId: quest.narratorVoiceId,
+      mediaType: quest.mediaType,
       coverImage: quest.coverImage,
       city: quest.city,
       // Pre-included first waypoint so the admin client can reverse-geocode

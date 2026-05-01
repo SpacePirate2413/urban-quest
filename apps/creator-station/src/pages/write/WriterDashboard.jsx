@@ -115,7 +115,7 @@ export function WriterDashboard() {
           <p className="text-white/70 mb-6">Create your first interactive story</p>
           <Button variant="cyan" onClick={handleNewQuest}>
             <Plus className="w-4 h-4" />
-            Create Quest
+            Add Quest
           </Button>
         </div>
       )}

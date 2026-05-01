@@ -154,6 +154,9 @@ export interface Quest {
   reviewCount: number;
   createdAt: Date;
   firstWaypointLocation: LocationCoords;
+  /** Creator-declared format for the whole quest. Set in the creator
+   *  station Quest Info tab; required for submission. */
+  mediaType?: 'audio' | 'video';
 }
 
 export interface ScoutedWaypoint {
@@ -177,6 +180,8 @@ export interface FilterOptions {
   maxDistance?: number;
   ageRating?: AgeRating;
   playerCount?: number;
+  /** Filter by quest format — audio-only or video. Undefined = both. */
+  mediaType?: 'audio' | 'video';
 }
 
 export type ViewMode = 'map' | 'list';

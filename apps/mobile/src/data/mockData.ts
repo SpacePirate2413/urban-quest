@@ -9,15 +9,18 @@ export const PRESET_AVATARS = [
   'https://picsum.photos/200?random=105',
 ];
 
+// Filter category list — kept aligned with creator-station's GENRES export
+// in apps/creator-station/src/store/useWriterStore.js. Update both lists
+// together so a creator-set genre is always pickable in the mobile filter.
 export const CATEGORIES = [
+  'Thriller',
   'Mystery',
   'Adventure',
-  'Horror',
-  'Sci-Fi',
-  'Action',
   'Romance',
   'Comedy',
-  'Historical',
+  'Sci-Fi',
   'Fantasy',
-  'Thriller',
+  'Inspiration',
+  'Nonfiction',
+  'News/Education',
 ];

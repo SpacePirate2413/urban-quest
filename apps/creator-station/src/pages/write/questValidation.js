@@ -29,6 +29,9 @@ export function validateQuest(quest) {
   if (!quest.estimatedDuration || quest.estimatedDuration < 1) {
     errors.push({ id: 'qi-duration', tab: 'settings', message: 'Estimated duration is required (min 1 minute)' });
   }
+  if (quest.mediaType !== 'audio' && quest.mediaType !== 'video') {
+    errors.push({ id: 'qi-media-type', tab: 'settings', message: 'Media type (audio or video) is required' });
+  }
 
   // ── Waypoints tab ─────────────────────────────────────────────────
   if (!quest.waypoints || quest.waypoints.length === 0) {

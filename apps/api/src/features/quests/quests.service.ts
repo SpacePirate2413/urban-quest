@@ -12,6 +12,7 @@ export interface CreateQuestInput {
   coverImage?: string;
   usesAI?: boolean;
   narratorVoiceId?: string;
+  mediaType?: 'audio' | 'video';
   estimatedDuration?: number;
   startLat?: number;
   startLng?: number;
@@ -201,7 +202,8 @@ export function isQuestPlayable(quest: {
 // quest means the changes must be re-reviewed before they go live.
 const CONTENT_FIELDS = new Set([
   'title', 'description', 'tagline', 'genre', 'difficulty', 'ageRating',
-  'price', 'coverImage', 'usesAI', 'narratorVoiceId', 'estimatedDuration',
+  'price', 'coverImage', 'usesAI', 'narratorVoiceId', 'mediaType',
+  'estimatedDuration',
 ]);
 
 export async function updateQuest(id: string, authorId: string, input: UpdateQuestInput) {

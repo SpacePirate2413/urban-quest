@@ -36,6 +36,7 @@ const createQuestSchema = z.object({
   ).optional(),
   usesAI: z.boolean().optional(),
   narratorVoiceId: z.string().optional(),
+  mediaType: z.enum(['audio', 'video']).optional(),
   estimatedDuration: z.number().int().positive().optional(),
   startLat: z.number().optional(),
   startLng: z.number().optional(),

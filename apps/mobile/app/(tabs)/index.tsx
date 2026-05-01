@@ -386,6 +386,27 @@ function FilterModal({ visible, onClose, filters, onFilterChange }: { visible: b
                 </TouchableOpacity>
               ))}
             </View>
+
+            <Text style={[Typography.headerMedium, { marginTop: Spacing.lg }]}>Format</Text>
+            <View style={styles.filterOptions}>
+              {[
+                { key: 'audio', label: '🎧 Audio only' },
+                { key: 'video', label: '🎬 Video' },
+              ].map((m) => (
+                <TouchableOpacity
+                  key={m.key}
+                  style={[styles.filterOption, filters.mediaType === m.key && styles.filterOptionActive]}
+                  onPress={() =>
+                    onFilterChange({
+                      ...filters,
+                      mediaType: filters.mediaType === m.key ? undefined : (m.key as 'audio' | 'video'),
+                    })
+                  }
+                >
+                  <Text style={[styles.filterOptionText, filters.mediaType === m.key && styles.filterOptionTextActive]}>{m.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </ScrollView>
 
           <View style={styles.filterModalFooter}>
@@ -498,7 +519,13 @@ export default function PlayScreen() {
     Keyboard.dismiss();
   };
 
-  const activeFiltersCount = [filters.priceRange, filters.difficulty, filters.category, filters.minRating].filter(Boolean).length;
+  const activeFiltersCount = [
+    filters.priceRange,
+    filters.difficulty,
+    filters.category,
+    filters.minRating,
+    filters.mediaType,
+  ].filter(Boolean).length;
 
   const filteredQuests = useMemo(() => {
     const filtered = quests.filter((quest) => {
@@ -510,6 +537,7 @@ export default function PlayScreen() {
       if (filters.difficulty && quest.difficulty !== filters.difficulty) return false;
       if (filters.category && quest.category !== filters.category) return false;
       if (filters.minRating && (quest.averageRating || 0) < filters.minRating) return false;
+      if (filters.mediaType && quest.mediaType !== filters.mediaType) return false;
       return true;
     });
     // When an address has been searched, sort closest-to-that-address first

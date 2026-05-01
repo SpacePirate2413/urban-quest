@@ -221,7 +221,9 @@ function QuestApprovalListener() {
       await api.publishQuest(approved.questId);
       await loadQuests();
       setApproved(null);
-      navigate(`/write/quest/${approved.questId}`);
+      // Land on the writer dashboard (quest cards) so the creator sees
+      // the freshly-published quest in their library, not the editor.
+      navigate('/write');
     } catch (err) {
       alert(`Publish failed: ${err.message}`);
     } finally {

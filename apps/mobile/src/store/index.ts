@@ -303,6 +303,7 @@ export const useQuestStore = create<QuestState>((set) => ({
         maxPlayers: 4,
         averageRating: q.averageRating || undefined,
         reviewCount: q._count?.reviews || 0,
+        mediaType: q.mediaType === 'video' ? 'video' : q.mediaType === 'audio' ? 'audio' : undefined,
         createdAt: new Date(q.createdAt),
         firstWaypointLocation: {
           latitude: q.waypoints?.[0]?.lat || 0,

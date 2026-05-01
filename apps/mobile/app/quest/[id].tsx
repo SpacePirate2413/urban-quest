@@ -1,11 +1,28 @@
 import { ContentMenu } from '@/src/components/moderation/ContentMenu';
 import { useQuestStore } from '@/src/store';
 import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
+import { Audio, ResizeMode, Video } from 'expo-av';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
 import { api } from '@/src/services/api';
 import { Quest, QuestStatus } from '@/src/types';
+
+// Strip the trailing /api so we can prefix relative scene mediaUrl values
+// (the API stores them as `/api/media/scene-...mp3`). Same convention used
+// in app/quest/play.tsx.
+const API_HOST = (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001/api').replace(/\/api$/, '');
+
+const PREVIEW_DURATION_MS = 10_000;
+
+function fullMediaUrl(rel: string | null | undefined): string | null {
+  if (!rel) return null;
+  if (/^https?:\/\//.test(rel)) return rel;
+  return `${API_HOST}${rel.startsWith('/') ? rel : `/${rel}`}`;
+}
+
+type PreviewMedia = { url: string; type: 'audio' | 'video' };
 
 export default function QuestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -16,11 +33,39 @@ export default function QuestDetailScreen() {
   const [isLoading, setIsLoading] = useState(!storeQuest);
   const [error, setError] = useState<string | null>(null);
 
+  // First scene's media — captured from the raw API response so the
+  // Preview button can play 10 s before the player commits to buying.
+  const [previewMedia, setPreviewMedia] = useState<PreviewMedia | null>(null);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const [previewProgress, setPreviewProgress] = useState(0); // 0..1 over 10 s
+  const previewSoundRef = useRef<Audio.Sound | null>(null);
+  const previewVideoRef = useRef<Video | null>(null);
+  const previewStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewProgressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => {
-    if (!quest && id) {
-      setIsLoading(true);
-      api.getQuest(id)
-        .then((data: any) => {
+    if (!id) return;
+    // Always pull the API payload (even if we already have a Quest from
+    // the store) so we can capture the first scene's media for the Preview
+    // button — the store doesn't carry scenes today.
+    if (!quest) setIsLoading(true);
+    api.getQuest(id)
+      .then((data: any) => {
+        // Capture first-scene media for the 10-second preview.
+        const scenes: any[] = Array.isArray(data?.scenes) ? data.scenes : [];
+        const firstWithMedia = scenes
+          .slice()
+          .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
+          .find((s) => s?.mediaUrl);
+        if (firstWithMedia) {
+          const url = fullMediaUrl(firstWithMedia.mediaUrl);
+          const type = firstWithMedia.mediaType === 'video' ? 'video' : 'audio';
+          if (url) setPreviewMedia({ url, type });
+        }
+        // Only build the Quest local state if the store didn't already
+        // give us one (avoids re-mapping work and keeps any in-store
+        // updates from being overwritten).
+        if (!quest) {
           const q: Quest = {
             id: data.id,
             title: data.title,
@@ -43,6 +88,7 @@ export default function QuestDetailScreen() {
             maxPlayers: 4,
             averageRating: data.averageRating,
             reviewCount: data._count?.reviews || 0,
+            mediaType: data.mediaType === 'video' ? 'video' : data.mediaType === 'audio' ? 'audio' : undefined,
             createdAt: new Date(data.createdAt),
             firstWaypointLocation: {
               latitude: data.waypoints?.[0]?.lat || 0,
@@ -63,14 +109,112 @@ export default function QuestDetailScreen() {
           };
           setQuest(q);
           selectQuest(q);
-          setIsLoading(false);
-        })
-        .catch((err: any) => {
-          setError(err.message || 'Failed to load quest');
-          setIsLoading(false);
-        });
-    }
+        }
+        setIsLoading(false);
+      })
+      .catch((err: any) => {
+        if (!quest) setError(err.message || 'Failed to load quest');
+        setIsLoading(false);
+      });
+    // We deliberately re-run only on `id`. `quest` and `selectQuest` are
+    // read inside the effect to decide whether to rebuild local state,
+    // but if we re-fetched on every quest change we'd hit the API in a loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Stop & unload preview audio when the screen unmounts so it doesn't
+  // keep playing in the background after the user navigates away.
+  useEffect(() => {
+    return () => {
+      previewSoundRef.current?.unloadAsync().catch(() => {});
+      previewSoundRef.current = null;
+      if (previewStopTimerRef.current) clearTimeout(previewStopTimerRef.current);
+      if (previewProgressTimerRef.current) clearInterval(previewProgressTimerRef.current);
+    };
+  }, []);
+
+  /** Cleanly stops the preview, whether it's audio or video. */
+  const stopPreview = async () => {
+    if (previewStopTimerRef.current) {
+      clearTimeout(previewStopTimerRef.current);
+      previewStopTimerRef.current = null;
+    }
+    if (previewProgressTimerRef.current) {
+      clearInterval(previewProgressTimerRef.current);
+      previewProgressTimerRef.current = null;
+    }
+    setIsPreviewPlaying(false);
+    setPreviewProgress(0);
+    if (previewSoundRef.current) {
+      try {
+        await previewSoundRef.current.stopAsync();
+        await previewSoundRef.current.unloadAsync();
+      } catch {
+        // Audio may have already unloaded — fine.
+      }
+      previewSoundRef.current = null;
+    }
+    if (previewVideoRef.current) {
+      try {
+        await previewVideoRef.current.pauseAsync();
+        await previewVideoRef.current.setPositionAsync(0);
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  /** Starts the 10 s preview from the beginning. Called by the ▶ button. */
+  const startPreview = async () => {
+    if (!previewMedia) return;
+    if (isPreviewPlaying) {
+      await stopPreview();
+      return;
+    }
+
+    // Update the visual progress bar 20× per second so it feels live.
+    const startedAt = Date.now();
+    previewProgressTimerRef.current = setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      setPreviewProgress(Math.min(1, elapsed / PREVIEW_DURATION_MS));
+    }, 50);
+
+    // Schedule the hard stop at 10 s regardless of audio/video — Apple
+    // App Review guidelines and our paid-content policy require the
+    // teaser to truly cap at the configured length.
+    previewStopTimerRef.current = setTimeout(() => {
+      stopPreview();
+    }, PREVIEW_DURATION_MS);
+
+    setIsPreviewPlaying(true);
+
+    if (previewMedia.type === 'audio') {
+      try {
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: false,
+          shouldDuckAndroid: true,
+        });
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: previewMedia.url },
+          { shouldPlay: true, positionMillis: 0 },
+        );
+        previewSoundRef.current = sound;
+      } catch {
+        // If audio loading fails, just bail — visual feedback continues briefly.
+        await stopPreview();
+      }
+    } else {
+      // Video: rewind to 0 and play. The Video component is rendered
+      // inline in the preview card; the ref points at it.
+      try {
+        await previewVideoRef.current?.setPositionAsync(0);
+        await previewVideoRef.current?.playAsync();
+      } catch {
+        await stopPreview();
+      }
+    }
+  };
 
   if (isLoading) {
     return (
@@ -156,10 +300,6 @@ export default function QuestDetailScreen() {
               <Text style={styles.statValue}>{quest.estimatedDurationMinutes}</Text>
               <Text style={styles.statLabel}>minutes</Text>
             </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{quest.estimatedDistanceMeters > 0 ? (quest.estimatedDistanceMeters / 1609).toFixed(1) : '—'}</Text>
-              <Text style={styles.statLabel}>miles</Text>
-            </View>
           </View>
 
           <View style={styles.section}>
@@ -190,29 +330,103 @@ export default function QuestDetailScreen() {
                   {quest.estimatedDurationMinutes ? `${quest.estimatedDurationMinutes} min` : 'Not set'}
                 </Text>
               </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Format</Text>
+                <Text style={styles.detailValue}>
+                  {quest.mediaType === 'video'
+                    ? '🎬 Video'
+                    : quest.mediaType === 'audio'
+                      ? '🎧 Audio only'
+                      : '—'}
+                </Text>
+              </View>
             </View>
           </View>
 
           <View style={styles.section}>
             <Text style={Typography.headerMedium}>Starting Location</Text>
-            <View style={styles.mapPreview}>
-              <Text style={{ fontSize: 30 }}>📍</Text>
-              <Text style={[Typography.caption, { color: Colors.textSecondary, marginTop: Spacing.sm }]}>
-                {quest.firstWaypointLocation.latitude !== 0
-                  ? `${quest.firstWaypointLocation.latitude.toFixed(4)}°N, ${Math.abs(quest.firstWaypointLocation.longitude).toFixed(4)}°W`
-                  : 'Location not set'}
-              </Text>
-            </View>
+            {quest.firstWaypointLocation.latitude !== 0 ||
+            quest.firstWaypointLocation.longitude !== 0 ? (
+              <View style={styles.mapPreview}>
+                <MapView
+                  style={StyleSheet.absoluteFill}
+                  initialRegion={{
+                    latitude: quest.firstWaypointLocation.latitude,
+                    longitude: quest.firstWaypointLocation.longitude,
+                    latitudeDelta: 0.02,
+                    longitudeDelta: 0.02,
+                  }}
+                  pointerEvents="none"
+                  scrollEnabled={false}
+                  zoomEnabled={false}
+                  rotateEnabled={false}
+                  pitchEnabled={false}
+                >
+                  <Marker
+                    coordinate={{
+                      latitude: quest.firstWaypointLocation.latitude,
+                      longitude: quest.firstWaypointLocation.longitude,
+                    }}
+                    title={quest.waypoints?.[0]?.title || 'Starting waypoint'}
+                    pinColor={Colors.accentYellow}
+                  />
+                </MapView>
+              </View>
+            ) : (
+              <View style={[styles.mapPreview, { justifyContent: 'center', alignItems: 'center' }]}>
+                <Text style={{ fontSize: 30 }}>📍</Text>
+                <Text style={[Typography.caption, { color: Colors.textSecondary, marginTop: Spacing.sm }]}>
+                  Location not set
+                </Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.section}>
             <Text style={Typography.headerMedium}>Preview</Text>
-            <TouchableOpacity style={styles.previewPlayer}>
-              <Text style={{ fontSize: 40 }}>▶️</Text>
-              <Text style={[Typography.caption, { color: Colors.textSecondary, marginTop: Spacing.sm }]}>
-                10 second preview
-              </Text>
-            </TouchableOpacity>
+            {previewMedia ? (
+              <TouchableOpacity
+                style={styles.previewPlayer}
+                onPress={startPreview}
+                activeOpacity={0.85}
+              >
+                {/* Video player rendered behind the controls so the user
+                    sees moving video while the preview plays. Audio
+                    previews show only the controls. */}
+                {previewMedia.type === 'video' && (
+                  <Video
+                    ref={previewVideoRef}
+                    source={{ uri: previewMedia.url }}
+                    style={StyleSheet.absoluteFill}
+                    resizeMode={ResizeMode.COVER}
+                    isMuted={false}
+                    posterSource={quest.coverImageUrl ? { uri: quest.coverImageUrl } : undefined}
+                    usePoster={!!quest.coverImageUrl}
+                    posterStyle={{ resizeMode: 'cover' }}
+                  />
+                )}
+                <View style={styles.previewOverlay}>
+                  <Text style={{ fontSize: 40 }}>{isPreviewPlaying ? '⏸' : '▶️'}</Text>
+                  <Text style={[Typography.caption, { color: Colors.textSecondary, marginTop: Spacing.sm }]}>
+                    {isPreviewPlaying
+                      ? `Playing… ${Math.max(0, Math.ceil(10 - previewProgress * 10))}s left`
+                      : '10 second preview'}
+                  </Text>
+                </View>
+                <View style={styles.previewProgressBar}>
+                  <View
+                    style={[styles.previewProgressFill, { width: `${previewProgress * 100}%` }]}
+                  />
+                </View>
+              </TouchableOpacity>
+            ) : (
+              <View style={[styles.previewPlayer, { opacity: 0.5 }]}>
+                <Text style={{ fontSize: 40 }}>🎧</Text>
+                <Text style={[Typography.caption, { color: Colors.textSecondary, marginTop: Spacing.sm }]}>
+                  No preview available yet
+                </Text>
+              </View>
+            )}
           </View>
 
           <TouchableOpacity style={styles.creatorCard} onPress={() => router.push(`/creator/${quest.authorId}` as any)}>
@@ -399,24 +613,41 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   mapPreview: {
-    height: 120,
+    height: 160,
     backgroundColor: Colors.surface,
     borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
+    overflow: 'hidden',
     marginTop: Spacing.sm,
     borderWidth: 2,
     borderColor: Colors.border,
   },
   previewPlayer: {
-    height: 100,
+    height: 160,
     backgroundColor: Colors.surface,
     borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
+    overflow: 'hidden',
     marginTop: Spacing.sm,
     borderWidth: 2,
     borderColor: Colors.border,
+    position: 'relative',
+  },
+  previewOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  previewProgressBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 3,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  previewProgressFill: {
+    height: '100%',
+    backgroundColor: Colors.accentYellow,
   },
   creatorCard: {
     flexDirection: 'row',

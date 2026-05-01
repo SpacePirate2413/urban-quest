@@ -637,6 +637,23 @@ export function AdminDashboard() {
                               </p>
                             </div>
                           </div>
+                          <div className="flex items-center gap-2">
+                            {selectedQuest.mediaType === 'video' ? (
+                              <FileVideo className="w-4 h-4 text-purple flex-shrink-0" />
+                            ) : (
+                              <FileAudio className="w-4 h-4 text-cyan flex-shrink-0" />
+                            )}
+                            <div>
+                              <p className="text-[10px] text-white/40 font-bangers uppercase">Format</p>
+                              <p className="text-sm text-white capitalize">
+                                {selectedQuest.mediaType === 'video'
+                                  ? 'Video'
+                                  : selectedQuest.mediaType === 'audio'
+                                    ? 'Audio only'
+                                    : 'Not set'}
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>

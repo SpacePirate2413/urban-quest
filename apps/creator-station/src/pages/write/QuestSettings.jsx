@@ -18,6 +18,7 @@ const QUEST_INFO_FIELDS = [
   'ageRating',
   'price',
   'estimatedDuration',
+  'mediaType',
   'usesAI',
   'narratorVoiceId',
 ];
@@ -69,10 +70,17 @@ export function QuestSettings({ questId }) {
   // updateQuest swallows API errors by design (it falls back to local-only
   // state with an error message), so for the Save button we hit the API
   // directly so failures actually throw and surface the "Try again" state.
+  //
+  // Skip null / undefined values: the backend Zod schema treats most fields
+  // as `.optional()` (accepts undefined or absence) but rejects an explicit
+  // `null`. Existing quests can have `mediaType: null`, `narratorVoiceId:
+  // null`, etc., so dumping the whole quest into the PATCH body 400s.
   const handleSaveAll = async () => {
     const payload = {};
     for (const f of QUEST_INFO_FIELDS) {
-      if (f in quest) payload[f] = quest[f];
+      if (f in quest && quest[f] !== null && quest[f] !== undefined) {
+        payload[f] = quest[f];
+      }
     }
     await api.updateQuest(questId, payload);
   };
@@ -96,20 +104,20 @@ export function QuestSettings({ questId }) {
             placeholder="Quest title..."
           />
 
-          <Textarea
-            label="Description"
-            value={quest.description}
-            onChange={(e) => handleUpdate('description', e.target.value)}
-            placeholder="Describe your quest..."
-            rows={4}
-          />
-
           <Input
             label="Tagline"
             value={quest.tagline || ''}
             onChange={(e) => handleUpdate('tagline', e.target.value)}
             placeholder="A short catchy tagline..."
             maxLength={100}
+          />
+
+          <Textarea
+            label="Description"
+            value={quest.description}
+            onChange={(e) => handleUpdate('description', e.target.value)}
+            placeholder="Describe your quest..."
+            rows={4}
           />
 
           <div>
@@ -219,6 +227,22 @@ export function QuestSettings({ questId }) {
               </div>
               <p className="text-xs text-white/50 mt-1">
                 Time in minutes
+              </p>
+            </div>
+
+            <div>
+              <Select
+                label="Media Type"
+                value={quest.mediaType || ''}
+                onChange={(e) => handleUpdate('mediaType', e.target.value)}
+                options={[
+                  { value: 'audio', label: 'Audio only' },
+                  { value: 'video', label: 'Video' },
+                ]}
+                placeholder="Select format..."
+              />
+              <p className="text-xs text-white/50 mt-1">
+                Format you'll use across all scenes — audio narration or video.
               </p>
             </div>
           </div>

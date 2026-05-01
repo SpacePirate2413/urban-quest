@@ -7,6 +7,7 @@ import {
   Alert,
   AppState,
   AppStateStatus,
+  ImageBackground,
   Linking,
   Platform,
   ScrollView,
@@ -55,6 +56,9 @@ type PlayableQuest = {
   id: string;
   title: string;
   isFree: boolean;
+  /** Quest cover image (full URL). Used as the background visual for
+   *  audio-only scenes and as a poster while video scenes buffer. */
+  coverImageUrl: string | null;
   waypoints: Waypoint[];
   scenes: Scene[];
   sceneById: Map<string, Scene>;
@@ -165,10 +169,20 @@ function parsePlayableQuest(data: any): PlayableQuest | string {
   // alone — the creator's scene order is the source of truth.
   const firstScene = scenes[0];
 
+  // Cover image is stored as either a full URL (https://...) or as a
+  // base64 data URI (legacy creator-station path). Both work directly as
+  // an Image source, so we just normalize to string|null.
+  const coverImageUrl: string | null = data.coverImage
+    ? /^https?:\/\/|^data:/.test(data.coverImage)
+      ? data.coverImage
+      : `${API_HOST}${String(data.coverImage).startsWith('/') ? data.coverImage : `/${data.coverImage}`}`
+    : null;
+
   return {
     id: data.id,
     title: data.title,
     isFree: (data.price ?? 0) === 0,
+    coverImageUrl,
     waypoints,
     scenes,
     sceneById,
@@ -302,7 +316,15 @@ function NavigationView({ destination, currentLocation, permissionDenied, onArri
 // a "Continue" button if media never loads (network glitch, etc).
 // ─────────────────────────────────────────────────────────────────────────
 
-function ScenePlayer({ scene, onComplete }: { scene: Scene; onComplete: () => void }) {
+function ScenePlayer({
+  scene,
+  coverImageUrl,
+  onComplete,
+}: {
+  scene: Scene;
+  coverImageUrl: string | null;
+  onComplete: () => void;
+}) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [finished, setFinished] = useState(false);
@@ -390,6 +412,12 @@ function ScenePlayer({ scene, onComplete }: { scene: Scene; onComplete: () => vo
             source={{ uri: scene.mediaUrl }}
             style={StyleSheet.absoluteFill}
             useNativeControls
+            // Show the quest cover as a poster while the video loads —
+            // gives the player something cinematic to look at instead of
+            // a black box during buffering.
+            usePoster={!!coverImageUrl}
+            posterSource={coverImageUrl ? { uri: coverImageUrl } : undefined}
+            posterStyle={{ resizeMode: 'cover' }}
             resizeMode={ResizeMode.CONTAIN}
             onPlaybackStatusUpdate={(status) => {
               if (!status.isLoaded) return;
@@ -400,6 +428,17 @@ function ScenePlayer({ scene, onComplete }: { scene: Scene; onComplete: () => vo
               if (status.didJustFinish) setFinished(true);
             }}
           />
+        ) : coverImageUrl && scene.mediaType === 'audio' ? (
+          // Audio scene + quest has cover art → full-bleed background with
+          // a dark gradient over the bottom so the play button + progress
+          // bar stay readable on top of any image.
+          <ImageBackground
+            source={{ uri: coverImageUrl }}
+            resizeMode="cover"
+            style={StyleSheet.absoluteFill}
+          >
+            <View style={styles.audioGradient} pointerEvents="none" />
+          </ImageBackground>
         ) : (
           <View style={styles.audioPlaceholder}>
             <Text style={{ fontSize: 60 }}>{scene.mediaType === 'audio' ? '🎧' : '🎬'}</Text>
@@ -775,7 +814,13 @@ export default function PlayScreen() {
         />
       )}
 
-      {phase === 'scene' && <ScenePlayer scene={currentScene} onComplete={handleSceneComplete} />}
+      {phase === 'scene' && (
+        <ScenePlayer
+          scene={currentScene}
+          coverImageUrl={quest.coverImageUrl}
+          onComplete={handleSceneComplete}
+        />
+      )}
 
       {phase === 'question' && <QuestionView scene={currentScene} onChoose={handleChoose} />}
 
@@ -872,6 +917,17 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   audioPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center', alignSelf: 'stretch' },
+  // Subtle dark fade across the bottom 50% so the play button + progress
+  // bar stay readable on top of bright cover-image backgrounds. Pure
+  // semi-transparent overlay — no native gradient lib required.
+  audioGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '50%',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
   playButton: {
     position: 'absolute',
     width: 80,
