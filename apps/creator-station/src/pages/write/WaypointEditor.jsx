@@ -1,16 +1,81 @@
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png';
+import iconUrl from 'leaflet/dist/images/marker-icon.png';
+import shadowUrl from 'leaflet/dist/images/marker-shadow.png';
 import {
     Bookmark,
     ChevronRight,
+    Loader2,
+    Locate,
     MapPin,
     Plus,
     PlusCircle,
     RefreshCw,
+    Search,
     Trash2,
-    X
+    X,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import { Badge, Button, Card, Input, Textarea } from '../../components/ui';
 import { useWriterStore } from '../../store/useWriterStore';
+
+// Leaflet ships its marker icons as relative URLs that don't survive Vite's
+// bundler. Re-point them at the imported asset URLs once when this module
+// first loads. Lives here (not in main.jsx) so the leaflet import is lazy —
+// /admin never has to load it.
+if (typeof L?.Icon?.Default?.prototype === 'object') {
+  delete L.Icon.Default.prototype._getIconUrl;
+  L.Icon.Default.mergeOptions({ iconRetinaUrl, iconUrl, shadowUrl });
+}
+
+// Reasonable fallback when we have no GPS, no waypoints, and no search yet.
+const DEFAULT_CENTER = [39.5, -98.35]; // continental US center
+const DEFAULT_ZOOM = 4;
+
+/**
+ * Hits OpenStreetMap's Nominatim geocoder. Free, no API key, but the public
+ * endpoint asks for a 1-req/sec ceiling and a real User-Agent. Fine for a
+ * dev/creator tool. If we ever ship this to high-volume users we'll want to
+ * proxy through our own API or swap to a paid provider.
+ */
+async function geocode(query) {
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`;
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!res.ok) throw new Error(`Geocoder returned ${res.status}`);
+  const data = await res.json();
+  if (!Array.isArray(data) || data.length === 0) return null;
+  const hit = data[0];
+  return {
+    lat: parseFloat(hit.lat),
+    lng: parseFloat(hit.lon),
+    label: hit.display_name,
+  };
+}
+
+// Captures clicks on the map and forwards them to a handler. Has to live
+// inside a MapContainer because react-leaflet's hooks need the map context.
+function ClickToDrop({ onMapClick }) {
+  useMapEvents({
+    click(e) {
+      onMapClick({ lat: e.latlng.lat, lng: e.latlng.lng });
+    },
+  });
+  return null;
+}
+
+// Imperatively flies the map to a target the parent passes in. Used for
+// search results and the "Show on map" button on saved waypoints.
+function FlyToController({ flyTarget }) {
+  const map = useMap();
+  useEffect(() => {
+    if (flyTarget) {
+      map.flyTo([flyTarget.lat, flyTarget.lng], flyTarget.zoom ?? 13, { duration: 0.6 });
+    }
+  }, [flyTarget, map]);
+  return null;
+}
 
 export function WaypointEditor({ questId }) {
   const {
@@ -30,6 +95,15 @@ export function WaypointEditor({ questId }) {
   const [expandedScoutId, setExpandedScoutId] = useState(null);
   const mapRef = useRef(null);
 
+  // Search bar state.
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchBusy, setSearchBusy] = useState(false);
+  const [searchError, setSearchError] = useState(null);
+
+  // The parent tells the map "go here" by mutating this object. The
+  // FlyToController child reacts to the change and animates the camera.
+  const [flyTarget, setFlyTarget] = useState(null);
+
   // Refetch every time the saved-waypoints panel is opened so updates from
   // the mobile app appear without a page reload. The previous gate
   // (scoutedWaypointsLoaded) cached the first response forever.
@@ -39,26 +113,103 @@ export function WaypointEditor({ questId }) {
     }
   }, [showSavedPanel, loadScoutedWaypoints]);
 
+  // Auto-locate on mount via the browser geolocation API. One-shot — we
+  // don't keep tracking, the creator just wants the map centered near them
+  // when they land on this tab. Falls back silently if the user denies.
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    let cancelled = false;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (cancelled) return;
+        // Only fly to the user's location if they don't already have
+        // waypoints — otherwise the existing waypoints' bounds win.
+        const wpCount = quests.find((q) => q.id === questId)?.waypoints.length ?? 0;
+        if (wpCount === 0) {
+          setFlyTarget({ lat: pos.coords.latitude, lng: pos.coords.longitude, zoom: 13 });
+        }
+      },
+      () => {
+        // Permission denied / timeout — leave the default region.
+      },
+      { timeout: 6000, maximumAge: 60_000 },
+    );
+    return () => {
+      cancelled = true;
+    };
+    // Only run on mount; questId is stable for the lifetime of this editor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Initial center: bounds of existing waypoints if any, else the default.
+  // The map is only rendered once with this; FlyToController takes over after.
+  const initialView = useMemo(() => {
+    if (!quest || quest.waypoints.length === 0) {
+      return { center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM };
+    }
+    const lats = quest.waypoints.map((w) => w.lat).filter(Number.isFinite);
+    const lngs = quest.waypoints.map((w) => w.lng).filter(Number.isFinite);
+    if (!lats.length) return { center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM };
+    const lat = (Math.min(...lats) + Math.max(...lats)) / 2;
+    const lng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+    return { center: [lat, lng], zoom: 13 };
+    // The map is initialized only once; we don't want to re-mount it just
+    // because waypoints changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   if (!quest) return null;
 
   const selectedWaypoint = quest.waypoints.find(wp => wp.id === selectedWaypointId);
 
   const handleAddWaypoint = () => {
-    addWaypoint(questId, {});
+    // Drop a pin at the map's current center. Better than the random-jiggle
+    // fallback — the creator's center-of-attention is the real intent.
+    const map = mapRef.current;
+    if (map) {
+      const c = map.getCenter();
+      addWaypoint(questId, { lat: c.lat, lng: c.lng });
+    } else {
+      addWaypoint(questId, {});
+    }
   };
 
-  const handleMapClick = (e) => {
-    if (!mapRef.current) return;
-    if (e.target.closest('button')) return;
-
-    const rect = mapRef.current.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-
-    const lng = -74.0060 + (x - 50) * 0.002;
-    const lat = 40.7128 + (50 - y) * 0.002;
-
+  const handleMapClick = ({ lat, lng }) => {
+    // Click-to-drop. Real coordinates straight from the leaflet event — no
+    // more cartoon NYC offset math.
     addWaypoint(questId, { lat, lng });
+  };
+
+  const handleSearch = async (e) => {
+    e?.preventDefault?.();
+    const q = searchQuery.trim();
+    if (!q) return;
+    setSearchBusy(true);
+    setSearchError(null);
+    try {
+      const hit = await geocode(q);
+      if (!hit) {
+        setSearchError(`No results for "${q}".`);
+        return;
+      }
+      setFlyTarget({ lat: hit.lat, lng: hit.lng, zoom: 13 });
+    } catch (err) {
+      setSearchError(err?.message ?? 'Search failed.');
+    } finally {
+      setSearchBusy(false);
+    }
+  };
+
+  const handleLocateMe = () => {
+    if (!navigator.geolocation) {
+      setSearchError('Browser location not available.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setFlyTarget({ lat: pos.coords.latitude, lng: pos.coords.longitude, zoom: 13 }),
+      (err) => setSearchError(err.message || 'Could not get your location.'),
+      { timeout: 6000, maximumAge: 60_000 },
+    );
   };
 
   const handleUpdateWaypoint = (field, value) => {
@@ -99,90 +250,106 @@ export function WaypointEditor({ questId }) {
   return (
     <div className="flex gap-6 h-[calc(100vh-220px)] min-h-[500px]">
       {/* ── Map panel ────────────────────────────────────────────────── */}
-      <div className="flex-1 relative">
-        <Card className="h-full overflow-hidden">
-          <div
-            ref={mapRef}
-            className="w-full h-full relative cursor-crosshair"
-            onClick={handleMapClick}
-            style={{
-              background: `
-                linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px),
-                #0a1628
-              `,
-              backgroundSize: '40px 40px',
-            }}
-          >
-            {quest.waypoints.map((waypoint, index) => {
-              const isSelected = waypoint.id === selectedWaypointId;
-              const x = ((waypoint.lng + 74.1) * 500) % 80 + 10;
-              const y = ((waypoint.lat - 40.7) * 500) % 70 + 15;
-
-              return (
-                <button
-                  key={waypoint.id}
-                  onClick={() => {
-                    setSelectedWaypointId(waypoint.id);
-                    setShowSavedPanel(false);
-                  }}
-                  className={`
-                    absolute transform -translate-x-1/2 -translate-y-full
-                    transition-all duration-200
-                    ${isSelected ? 'scale-130 z-10' : 'hover:scale-110'}
-                  `}
-                  style={{ left: `${x}%`, top: `${y}%` }}
-                >
-                  <div className="relative">
-                    <MapPin
-                      className={`w-8 h-8 ${isSelected ? 'text-neon-green' : 'text-cyan'}`}
-                      fill={isSelected ? '#39ff14' : '#00d4ff'}
-                      fillOpacity={0.3}
-                    />
-                    <span
-                      className={`
-                        absolute -bottom-5 left-1/2 -translate-x-1/2
-                        font-bangers text-xs whitespace-nowrap
-                        ${isSelected ? 'text-neon-green' : 'text-white/70'}
-                      `}
-                    >
-                      {index + 1}. {waypoint.name}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-
-            <div className="absolute bottom-4 right-4 z-20 flex gap-2">
-              <Button variant="cyan" size="sm" onClick={handleAddWaypoint}>
-                <Plus className="w-4 h-4" />
-                Add Pin
-              </Button>
-              <Button
-                variant={showSavedPanel ? 'yellow' : 'yellow-outline'}
-                size="sm"
+      <div className="flex-1 relative flex flex-col gap-3">
+        {/* Search bar — type any place, geocode via Nominatim, fly the map. */}
+        <form onSubmit={handleSearch} className="flex gap-2 items-center">
+          <div className="flex-1 relative">
+            <Search className="w-4 h-4 text-white/40 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search a city, address, or landmark…"
+              className="w-full bg-input-bg border-[1.5px] border-panel-border rounded-lg pl-9 pr-9 py-2.5 text-white placeholder:text-white/40 focus:outline-none focus:border-cyan transition-colors"
+            />
+            {searchQuery && (
+              <button
+                type="button"
                 onClick={() => {
-                  setShowSavedPanel(!showSavedPanel);
-                  if (!showSavedPanel) setSelectedWaypointId(null);
+                  setSearchQuery('');
+                  setSearchError(null);
                 }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-white/40 hover:text-white"
               >
-                <Bookmark className="w-4 h-4" />
-                Saved Waypoints
-              </Button>
-            </div>
-
-            {quest.waypoints.length === 0 && !showSavedPanel && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="text-center">
-                  <MapPin className="w-16 h-16 text-white/20 mx-auto mb-4" />
-                  <p className="font-bangers text-white/70">No waypoints yet</p>
-                  <p className="text-sm text-white/50">
-                    Click "Add Pin" or use "Saved Waypoints" from scouting
-                  </p>
-                </div>
-              </div>
+                <X className="w-4 h-4" />
+              </button>
             )}
           </div>
+          <Button type="submit" variant="cyan" size="sm" disabled={searchBusy || !searchQuery.trim()}>
+            {searchBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            Search
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={handleLocateMe} title="Center on my location">
+            <Locate className="w-4 h-4" />
+          </Button>
+        </form>
+        {searchError && <p className="text-xs text-hot-pink -mt-1">{searchError}</p>}
+
+        <Card className="flex-1 overflow-hidden relative">
+          <MapContainer
+            center={initialView.center}
+            zoom={initialView.zoom}
+            style={{ height: '100%', width: '100%' }}
+            ref={mapRef}
+            scrollWheelZoom
+          >
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+
+            <ClickToDrop onMapClick={handleMapClick} />
+            <FlyToController flyTarget={flyTarget} />
+
+            {quest.waypoints.map((waypoint, index) => {
+              if (!Number.isFinite(waypoint.lat) || !Number.isFinite(waypoint.lng)) return null;
+              const isSelected = waypoint.id === selectedWaypointId;
+              return (
+                <Marker
+                  key={waypoint.id}
+                  position={[waypoint.lat, waypoint.lng]}
+                  eventHandlers={{
+                    click: () => {
+                      setSelectedWaypointId(waypoint.id);
+                      setShowSavedPanel(false);
+                    },
+                  }}
+                >
+                  <Popup>
+                    <strong>{index + 1}. {waypoint.name || 'Untitled'}</strong>
+                    {isSelected && <div className="text-xs">Currently editing</div>}
+                  </Popup>
+                </Marker>
+              );
+            })}
+          </MapContainer>
+
+          {/* Floating overlay buttons — sit above the map. */}
+          <div className="absolute bottom-4 right-4 z-[400] flex gap-2">
+            <Button variant="cyan" size="sm" onClick={handleAddWaypoint}>
+              <Plus className="w-4 h-4" />
+              Add Pin
+            </Button>
+            <Button
+              variant={showSavedPanel ? 'yellow' : 'yellow-outline'}
+              size="sm"
+              onClick={() => {
+                setShowSavedPanel(!showSavedPanel);
+                if (!showSavedPanel) setSelectedWaypointId(null);
+              }}
+            >
+              <Bookmark className="w-4 h-4" />
+              Saved Waypoints
+            </Button>
+          </div>
+
+          {quest.waypoints.length === 0 && !showSavedPanel && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[400] bg-input-bg/90 border-[1.5px] border-panel-border rounded-md px-3 py-1.5 pointer-events-none">
+              <p className="text-xs text-white/70">
+                Click anywhere on the map to drop a pin
+              </p>
+            </div>
+          )}
         </Card>
       </div>
 

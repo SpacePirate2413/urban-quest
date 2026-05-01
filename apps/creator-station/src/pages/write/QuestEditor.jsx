@@ -1,5 +1,5 @@
-import { ArrowLeft, CircleCheckBig, Film, MapPin, Rocket, Settings, Star, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ArrowLeft, CircleCheckBig, Film, MapPin, RefreshCw, Rocket, Send, Settings, Star, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ReReviewPrompt } from '../../components/ReReviewPrompt';
 import { Badge, Button, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui';
@@ -8,14 +8,23 @@ import { useWriterStore } from '../../store/useWriterStore';
 import { CreateTab } from './CreateTab';
 import { QuestReviews } from './QuestReviews';
 import { QuestSettings } from './QuestSettings';
+import { ValidationPanel } from './ValidationPanel';
 import { WaypointEditor } from './WaypointEditor';
+import { validateQuest } from './questValidation';
 
 export function QuestEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { quests, setActiveQuest, activeQuestId, loadQuests } = useWriterStore();
+  const { quests, setActiveQuest, activeQuestId, loadQuests, updateQuest, updateScene } = useWriterStore();
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+
+  // Controlled tab so the validation panel can switch tabs on click.
+  const [activeTab, setActiveTab] = useState('settings');
+
+  // Submit + popup state.
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   const quest = quests.find(q => q.id === id);
 
@@ -24,6 +33,30 @@ export function QuestEditor() {
       setActiveQuest(id);
     }
   }, [id, activeQuestId, setActiveQuest]);
+
+  // Errors recompute live on every quest/scene change. The panel itself
+  // decides whether to render based on `panelOpen` + non-empty errors.
+  const errors = useMemo(() => validateQuest(quest), [quest]);
+
+  // Auto-close the panel the instant all errors clear, so the creator
+  // gets the satisfying "everything's good" state for free.
+  useEffect(() => {
+    if (panelOpen && errors.length === 0) setPanelOpen(false);
+  }, [panelOpen, errors.length]);
+
+  // Auto-flip `usesAI` to true the first time we detect AI-narrated audio
+  // on any scene (signaled by `narratorVoiceId` being set). We only flip
+  // it ON automatically — the creator can still toggle it off manually
+  // afterwards, and we never auto-flip it OFF (creators may have used AI
+  // outside our station and need the toggle to stay where they put it).
+  useEffect(() => {
+    if (!quest) return;
+    if (quest.usesAI) return;
+    const anyAi = (quest.scenes || []).some((s) => !!s.narratorVoiceId);
+    if (anyAi) {
+      updateQuest(quest.id, { usesAI: true });
+    }
+  }, [quest, updateQuest]);
 
   if (!quest) {
     return (
@@ -40,6 +73,8 @@ export function QuestEditor() {
   }
 
   const isApproved = quest.submissionStatus === 'approved' && quest.status !== 'published';
+  const isLockedForSubmit =
+    quest.submissionStatus === 'pending' || quest.submissionStatus === 'approved' || quest.status === 'published';
 
   const handlePublish = async () => {
     setIsPublishing(true);
@@ -50,6 +85,27 @@ export function QuestEditor() {
       alert(`Publish failed: ${err.message}`);
     } finally {
       setIsPublishing(false);
+    }
+  };
+
+  const handleSubmitForReview = async () => {
+    if (errors.length > 0) {
+      // Force the panel open so even if the user dismissed it earlier, the
+      // submit click resurfaces the issues.
+      setPanelOpen(true);
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await api.submitQuest(quest.id);
+      // Optimistically mirror the API state so the UI doesn't flash.
+      (quest.scenes || []).forEach((s) => updateScene(quest.id, s.id, { mediaStatus: 'pending' }));
+      updateQuest(quest.id, { submissionStatus: 'pending' });
+    } catch (err) {
+      console.error('Submit quest failed:', err);
+      alert(`Submit failed: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -68,6 +124,38 @@ export function QuestEditor() {
             </Badge>
           )}
         </div>
+
+        {/* Submit for Review — moved up here so it's reachable from any tab.
+            Disabled while a submission is already in flight or once approved. */}
+        <Button
+          variant="green"
+          onClick={handleSubmitForReview}
+          disabled={isSubmitting || isLockedForSubmit || (quest.scenes?.length ?? 0) === 0}
+          title={
+            isLockedForSubmit
+              ? 'This quest is already submitted, approved, or published'
+              : errors.length > 0
+                ? `${errors.length} issue${errors.length === 1 ? '' : 's'} to fix before submitting`
+                : 'Submit this quest for admin review'
+          }
+        >
+          {isSubmitting ? (
+            <>
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              Submitting…
+            </>
+          ) : (
+            <>
+              <Send className="w-4 h-4" />
+              Submit for Review
+              {errors.length > 0 && (
+                <span className="ml-1 text-[10px] bg-red-500/30 text-red-100 rounded px-1.5 py-0.5">
+                  {errors.length}
+                </span>
+              )}
+            </>
+          )}
+        </Button>
       </div>
 
       {isApproved && !bannerDismissed && (
@@ -101,7 +189,7 @@ export function QuestEditor() {
 
       <ReReviewPrompt questId={quest.id} />
 
-      <Tabs defaultValue="settings" className="flex-1 flex flex-col overflow-hidden">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
         <div className="px-6 py-3 border-b border-panel-border flex items-center justify-between">
           <TabsList>
             <TabsTrigger value="settings" icon={<Settings className="w-4 h-4" />}>
@@ -141,6 +229,13 @@ export function QuestEditor() {
           </TabsContent>
         </div>
       </Tabs>
+
+      <ValidationPanel
+        errors={errors}
+        isOpen={panelOpen}
+        onClose={() => setPanelOpen(false)}
+        onJumpToTab={(tab) => setActiveTab(tab)}
+      />
     </div>
   );
 }

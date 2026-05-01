@@ -52,13 +52,11 @@ function SaveIndicator({ sceneId }) {
 }
 
 export function CreateTab({ questId }) {
-  const { quests, addScene, updateScene, deleteScene, updateQuest } = useWriterStore();
+  const { quests, addScene, updateScene, deleteScene } = useWriterStore();
   const quest = quests.find(q => q.id === questId);
   const [selectedSceneId, setSelectedSceneId] = useState(null);
   const [pendingMedia, setPendingMedia] = useState({});
-  const [validationErrors, setValidationErrors] = useState([]);
   const [showAINarrate, setShowAINarrate] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [previewModal, setPreviewModal] = useState(null);
   const fileInputRef = useRef(null);
@@ -245,78 +243,10 @@ export function CreateTab({ questId }) {
     handleUpdateScene('choices', selectedScene.choices.filter((_, i) => i !== index));
   };
 
-  // ── Validation ────────────────────────────────────────────────────────
-
-  const validateForSubmission = () => {
-    const errors = [];
-
-    // Quest Info checks
-    if (!quest.title?.trim()) errors.push('Quest title is required (Quest Info)');
-    if (!quest.description?.trim()) errors.push('Quest description is required (Quest Info)');
-    if (!quest.genre) errors.push('Quest genre is required (Quest Info)');
-    if (!quest.ageRating) errors.push('Quest age rating is required (Quest Info)');
-    if (!quest.coverImage) errors.push('Quest cover image is required (Quest Info)');
-
-    if (quest.scenes.length === 0) {
-      errors.push('At least one scene is required');
-    }
-
-    const sceneIds = new Set(quest.scenes.map((s) => s.id));
-    const waypointIds = new Set(quest.waypoints.map((w) => w.id));
-
-    quest.scenes.forEach((scene, idx) => {
-      const media = getSceneMedia(scene.id);
-      if (!media) errors.push(`Scene ${idx + 1}: Media file is required`);
-      else if (media.pending && !media.isGenerated) errors.push(`Scene ${idx + 1}: Media file not yet uploaded to server`);
-      // Script is optional. Creators using AI Narrate write a script that
-      // becomes the audio; creators using their own pre-produced media don't
-      // need one. The media file is the gate, not the script.
-      if (!scene.question?.trim()) errors.push(`Scene ${idx + 1}: Question is required`);
-      if (!scene.waypointId) {
-        errors.push(`Scene ${idx + 1}: Location (waypoint) is required`);
-      }
-      if (!scene.choices || scene.choices.length === 0) {
-        errors.push(`Scene ${idx + 1}: At least one choice is required`);
-      } else {
-        scene.choices.forEach((c, ci) => {
-          if (!c.text?.trim()) {
-            errors.push(`Scene ${idx + 1}, choice ${ci + 1}: Text is required`);
-          }
-          // Accept the new sceneId shape, the END sentinel, or — for legacy
-          // choices that haven't been re-saved yet — a valid waypointId.
-          const target = c.sceneId ?? c.waypointId;
-          if (target !== '__END__' && !sceneIds.has(target) && !waypointIds.has(target)) {
-            errors.push(`Scene ${idx + 1}, choice ${ci + 1}: Pick a destination scene or "End Quest"`);
-          }
-        });
-      }
-    });
-
-    return errors;
-  };
-
-  const handleSubmitForReview = async () => {
-    const errors = validateForSubmission();
-    if (errors.length > 0) {
-      setValidationErrors(errors);
-      return;
-    }
-    setValidationErrors([]);
-    setIsSubmitting(true);
-
-    try {
-      await api.submitQuest(questId);
-      quest.scenes.forEach(s => {
-        updateScene(questId, s.id, { mediaStatus: 'pending' });
-      });
-      updateQuest(questId, { submissionStatus: 'pending' });
-    } catch (err) {
-      console.error('Submit quest failed:', err);
-      alert(`Submit failed: ${err.message}`);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  // Submission validation lives in QuestEditor now (via questValidation.js)
+  // because the floating ValidationPanel needs to persist across tab
+  // switches. The Submit-for-Review button also moved up to the QuestEditor
+  // header so it's reachable from any tab.
 
   // ── Render ────────────────────────────────────────────────────────────
 
@@ -410,21 +340,6 @@ export function CreateTab({ questId }) {
           )}
         </div>
 
-        {/* Validation errors */}
-        {validationErrors.length > 0 && (
-          <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 max-h-40 overflow-y-auto">
-            <div className="flex items-center gap-2 mb-2">
-              <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-              <p className="font-bangers text-xs text-red-500 uppercase">Required for Review</p>
-            </div>
-            {validationErrors.map((err, i) => (
-              <p key={i} className="text-xs text-red-400 leading-relaxed">
-                &bull; {err}
-              </p>
-            ))}
-          </div>
-        )}
-
         {/* Submission status */}
         {quest.submissionStatus && (
           <Badge
@@ -445,26 +360,9 @@ export function CreateTab({ questId }) {
             {quest.submissionStatus === 'rejected' && 'Rejected'}
           </Badge>
         )}
-
-        {/* Submit for Review — always visible */}
-        <Button
-          variant="green"
-          className="w-full"
-          onClick={handleSubmitForReview}
-          disabled={isSubmitting || quest.scenes.length === 0}
-        >
-          {isSubmitting ? (
-            <>
-              <RefreshCw className="w-4 h-4 animate-spin" />
-              Submitting...
-            </>
-          ) : (
-            <>
-              <Send className="w-4 h-4" />
-              Submit for Review
-            </>
-          )}
-        </Button>
+        {/* Submit-for-Review button moved up to the QuestEditor header on
+             2026-05-01 so it's visible from any tab; the floating
+             ValidationPanel surfaces submission errors. */}
       </div>
 
       {/* ── Main panel ───────────────────────────────────────────────── */}

@@ -2,8 +2,20 @@ import { api } from '@/src/services/api';
 import { useLocationStore, useWriteStore } from '@/src/store';
 import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
 import { ScoutedWaypoint } from '@/src/types';
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import * as Location from 'expo-location';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Keyboard,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import MapView, { Marker, Region } from 'react-native-maps';
 
 // Media capture (photo / video / audio) was removed from this screen on
 // 2026-04-29 — see tracker entry F3. The Prisma columns + the
@@ -31,11 +43,13 @@ function WaypointCard({ waypoint, onPress }: { waypoint: ScoutedWaypoint; onPres
   );
 }
 
-function AddWaypointModal({ visible, onClose, onSave, currentLocation }: {
+type PinCoord = { latitude: number; longitude: number };
+
+function AddWaypointModal({ visible, onClose, onSave, pinLocation }: {
   visible: boolean;
   onClose: () => void;
   onSave: (name: string, notes: string) => void;
-  currentLocation: { latitude: number; longitude: number } | null;
+  pinLocation: PinCoord | null;
 }) {
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
@@ -58,8 +72,8 @@ function AddWaypointModal({ visible, onClose, onSave, currentLocation }: {
     onClose();
   };
 
-  const lat = currentLocation?.latitude ?? 0;
-  const lng = currentLocation?.longitude ?? 0;
+  const lat = pinLocation?.latitude ?? 0;
+  const lng = pinLocation?.longitude ?? 0;
 
   return (
     <View style={styles.modalOverlay}>
@@ -73,10 +87,10 @@ function AddWaypointModal({ visible, onClose, onSave, currentLocation }: {
           <View style={styles.locationPreview}>
             <Text style={{ fontSize: 30 }}>📍</Text>
             <View style={styles.locationInfo}>
-              <Text style={Typography.body}>Current Location</Text>
+              <Text style={Typography.body}>Pin Location</Text>
               <Text style={[Typography.caption, { color: Colors.textSecondary }]}>
-                {currentLocation
-                  ? `${lat.toFixed(4)}° N, ${Math.abs(lng).toFixed(4)}° W`
+                {pinLocation
+                  ? `${lat.toFixed(4)}°, ${lng.toFixed(4)}°`
                   : 'Location unavailable'}
               </Text>
             </View>
@@ -117,8 +131,50 @@ function AddWaypointModal({ visible, onClose, onSave, currentLocation }: {
 export default function WriteScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [isLoadingWaypoints, setIsLoadingWaypoints] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchBusy, setSearchBusy] = useState(false);
   const { scoutedWaypoints, addScoutedWaypoint } = useWriteStore();
   const { currentLocation } = useLocationStore();
+
+  // The map can wander away from the player's current location (search,
+  // pan, zoom). Track the last region we know so the "Drop Pin Here" button
+  // pins at whatever the map is currently showing — that's how a creator
+  // pins remote locations they're planning a quest in.
+  const mapRef = useRef<MapView>(null);
+  const [mapCenter, setMapCenter] = useState<PinCoord | null>(null);
+
+  // Initial region — falls back to the continental US center until we know
+  // the user's GPS or they search for somewhere.
+  const initialRegion: Region = useMemo(() => {
+    if (currentLocation) {
+      return {
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      };
+    }
+    return { latitude: 39.5, longitude: -98.35, latitudeDelta: 30, longitudeDelta: 30 };
+  }, [currentLocation]);
+
+  // Auto-center on the player once we get the first GPS fix. Only fires the
+  // first time `currentLocation` becomes non-null so we don't fight the
+  // user's panning afterward.
+  const recenteredOnceRef = useRef(false);
+  useEffect(() => {
+    if (currentLocation && !recenteredOnceRef.current && mapRef.current) {
+      recenteredOnceRef.current = true;
+      mapRef.current.animateToRegion(
+        {
+          latitude: currentLocation.latitude,
+          longitude: currentLocation.longitude,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        },
+        500,
+      );
+    }
+  }, [currentLocation]);
 
   useEffect(() => {
     setIsLoadingWaypoints(true);
@@ -135,7 +191,6 @@ export default function WriteScreen() {
           audioRecordings: wp.audioRecordings || [],
           createdAt: new Date(wp.createdAt),
         }));
-        // Replace local state with API data
         useWriteStore.setState({ scoutedWaypoints: waypoints });
       })
       .catch(() => {
@@ -144,9 +199,39 @@ export default function WriteScreen() {
       .finally(() => setIsLoadingWaypoints(false));
   }, []);
 
+  const handleSearch = useCallback(async () => {
+    const query = searchQuery.trim();
+    if (!query) return;
+    Keyboard.dismiss();
+    setSearchBusy(true);
+    try {
+      // expo-location's geocoder uses the OS geocoder (Apple Maps on iOS,
+      // Google Geocoder on Android) — both respect the OS-level user privacy
+      // settings and need no API keys. Limit ourselves to one match.
+      const results = await Location.geocodeAsync(query);
+      if (!results.length) {
+        Alert.alert('Not found', `Couldn't find "${query}". Try a more specific address or city.`);
+        return;
+      }
+      const { latitude, longitude } = results[0];
+      mapRef.current?.animateToRegion(
+        { latitude, longitude, latitudeDelta: 0.05, longitudeDelta: 0.05 },
+        600,
+      );
+      setMapCenter({ latitude, longitude });
+    } catch (err: any) {
+      Alert.alert('Search failed', err?.message ?? 'Could not look up that location.');
+    } finally {
+      setSearchBusy(false);
+    }
+  }, [searchQuery]);
+
   const handleSaveWaypoint = async (name: string, notes: string) => {
-    const lat = currentLocation?.latitude ?? 0;
-    const lng = currentLocation?.longitude ?? 0;
+    // Pin lands at the map's current center, not GPS. That's how the user
+    // scouts a city they're planning a future trip to.
+    const target = mapCenter ?? currentLocation;
+    const lat = target?.latitude ?? 0;
+    const lng = target?.longitude ?? 0;
 
     try {
       const result = await api.addScoutedWaypoint({ name, notes, lat, lng });
@@ -156,8 +241,6 @@ export default function WriteScreen() {
         name,
         notes,
         location: { latitude: lat, longitude: lng },
-        // Media columns kept on the model for forward compatibility (see
-        // tracker entry F3); always empty as far as this screen knows.
         photos: [],
         videos: [],
         audioRecordings: [],
@@ -206,6 +289,8 @@ export default function WriteScreen() {
     );
   };
 
+  const pinTarget = mapCenter ?? currentLocation;
+
   return (
     <View style={AppStyles.container}>
       <View style={styles.header}>
@@ -218,17 +303,76 @@ export default function WriteScreen() {
         </Text>
       </View>
 
-      <View style={styles.mapSection}>
-        <View style={styles.mapPlaceholder}>
-          <Text style={{ fontSize: 40 }}>🗺️</Text>
-          <Text style={[Typography.body, { marginTop: Spacing.md }]}>Your Location</Text>
-          <Text style={[Typography.caption, { color: Colors.textSecondary }]}>
-            {currentLocation
-              ? `${currentLocation.latitude.toFixed(4)}° N, ${Math.abs(currentLocation.longitude).toFixed(4)}° W`
-              : 'Location not available'}
-          </Text>
+      <View style={styles.searchRow}>
+        <View style={styles.searchBox}>
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search a city, address, or landmark…"
+            placeholderTextColor={Colors.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            onSubmitEditing={handleSearch}
+            returnKeyType="search"
+            autoCorrect={false}
+          />
+          {searchBusy ? (
+            <ActivityIndicator size="small" color={Colors.cyan} />
+          ) : searchQuery ? (
+            <TouchableOpacity
+              onPress={() => {
+                setSearchQuery('');
+                Keyboard.dismiss();
+              }}
+            >
+              <Text style={styles.searchClear}>✕</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
-        <TouchableOpacity style={styles.dropPinButton} onPress={() => setShowAddModal(true)}>
+      </View>
+
+      <View style={styles.mapSection}>
+        <View style={styles.mapWrap}>
+          <MapView
+            ref={mapRef}
+            style={StyleSheet.absoluteFill}
+            initialRegion={initialRegion}
+            showsUserLocation
+            showsMyLocationButton={false}
+            onRegionChangeComplete={(r) =>
+              setMapCenter({ latitude: r.latitude, longitude: r.longitude })
+            }
+          >
+            {scoutedWaypoints.map((wp) => (
+              <Marker
+                key={wp.id}
+                coordinate={{ latitude: wp.location.latitude, longitude: wp.location.longitude }}
+                title={wp.name}
+                description={wp.notes ?? undefined}
+                pinColor={Colors.neonGreen}
+              />
+            ))}
+          </MapView>
+
+          {/* Crosshair so the user knows exactly where the pin will drop. */}
+          <View pointerEvents="none" style={styles.crosshair}>
+            <Text style={styles.crosshairText}>＋</Text>
+          </View>
+
+          <View pointerEvents="none" style={styles.coordPill}>
+            <Text style={[Typography.caption, { color: Colors.textPrimary }]}>
+              {pinTarget
+                ? `${pinTarget.latitude.toFixed(4)}°, ${pinTarget.longitude.toFixed(4)}°`
+                : 'Locating…'}
+            </Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={styles.dropPinButton}
+          onPress={() => setShowAddModal(true)}
+          disabled={!pinTarget}
+        >
           <Text style={styles.dropPinIcon}>📍</Text>
           <Text style={styles.dropPinText}>Drop Pin Here</Text>
         </TouchableOpacity>
@@ -252,14 +396,23 @@ export default function WriteScreen() {
                 key={waypoint.id}
                 waypoint={waypoint}
                 onPress={() => {
-                  const mediaInfo = [
-                    waypoint.photos.length > 0 ? `📷 ${waypoint.photos.length} photo(s)` : null,
-                    waypoint.videos.length > 0 ? `🎥 ${waypoint.videos.length} video(s)` : null,
-                    waypoint.audioRecordings.length > 0 ? `🎤 ${waypoint.audioRecordings.length} audio` : null,
-                  ].filter(Boolean).join('\n');
-                  const body = [waypoint.notes, mediaInfo].filter(Boolean).join('\n\n') || 'No notes';
-                  Alert.alert(waypoint.name, body, [
+                  // Offer "Show on map" so the user can fly the camera to a
+                  // saved pin without scrolling away.
+                  Alert.alert(waypoint.name, waypoint.notes || 'No notes', [
                     { text: 'OK', style: 'default' },
+                    {
+                      text: 'Show on Map',
+                      onPress: () =>
+                        mapRef.current?.animateToRegion(
+                          {
+                            latitude: waypoint.location.latitude,
+                            longitude: waypoint.location.longitude,
+                            latitudeDelta: 0.01,
+                            longitudeDelta: 0.01,
+                          },
+                          500,
+                        ),
+                    },
                     { text: 'Delete', style: 'destructive', onPress: () => handleDeleteWaypoint(waypoint) },
                   ]);
                 }}
@@ -284,7 +437,7 @@ export default function WriteScreen() {
         visible={showAddModal}
         onClose={() => setShowAddModal(false)}
         onSave={handleSaveWaypoint}
-        currentLocation={currentLocation}
+        pinLocation={pinTarget}
       />
     </View>
   );
@@ -292,8 +445,9 @@ export default function WriteScreen() {
 
 const styles = StyleSheet.create({
   header: {
-    padding: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
     paddingTop: 60,
+    paddingBottom: Spacing.sm,
     alignItems: 'center',
   },
   titleContainer: {
@@ -301,17 +455,67 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
   },
+  searchRow: {
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.sm,
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.inputBg,
+    borderRadius: 8,
+    paddingHorizontal: Spacing.md,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    gap: Spacing.sm,
+  },
+  searchIcon: { fontSize: 16 },
+  searchInput: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    color: Colors.textPrimary,
+    fontSize: 15,
+  },
+  searchClear: { color: Colors.textSecondary, fontSize: 16, paddingHorizontal: 4 },
   mapSection: {
     marginHorizontal: Spacing.lg,
     marginBottom: Spacing.lg,
   },
-  mapPlaceholder: {
-    height: 180,
-    backgroundColor: Colors.surface,
+  mapWrap: {
+    height: 240,
     borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+    position: 'relative',
+  },
+  crosshair: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.5,
+  },
+  crosshairText: {
+    fontSize: 28,
+    color: Colors.neonGreen,
+    fontWeight: '900',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  coordPill: {
+    position: 'absolute',
+    bottom: Spacing.sm,
+    left: Spacing.sm,
+    backgroundColor: 'rgba(10,22,40,0.85)',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
     borderColor: Colors.border,
   },
   dropPinButton: {
@@ -326,9 +530,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: Colors.neonGreen,
   },
-  dropPinIcon: {
-    fontSize: 20,
-  },
+  dropPinIcon: { fontSize: 20 },
   dropPinText: {
     color: Colors.primaryBackground,
     fontWeight: '700',
@@ -336,10 +538,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
-  savedSection: {
-    flex: 1,
-    paddingHorizontal: Spacing.lg,
-  },
+  savedSection: { flex: 1, paddingHorizontal: Spacing.lg },
   waypointCard: {
     flexDirection: 'row',
     backgroundColor: Colors.surface,
@@ -349,23 +548,14 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: Colors.border,
   },
-  waypointImage: {
-    width: 80,
-    height: 80,
-  },
+  waypointImage: { width: 80, height: 80 },
   noImage: {
     backgroundColor: Colors.inputBg,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  waypointInfo: {
-    flex: 1,
-    padding: Spacing.sm,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: Spacing.xl,
-  },
+  waypointInfo: { flex: 1, padding: Spacing.sm },
+  emptyState: { alignItems: 'center', paddingVertical: Spacing.xl },
   modalOverlay: {
     position: 'absolute',
     top: 0,
@@ -392,9 +582,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: Colors.border,
   },
-  locationInfo: {
-    flex: 1,
-  },
+  locationInfo: { flex: 1 },
   input: {
     backgroundColor: Colors.inputBg,
     borderWidth: 1.5,
@@ -405,10 +593,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginTop: Spacing.md,
   },
-  textArea: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
+  textArea: { height: 80, textAlignVertical: 'top' },
   modalActions: {
     flexDirection: 'row',
     gap: Spacing.md,

@@ -1,9 +1,9 @@
 import { CATEGORIES } from '@/src/data/mockData';
-import { useQuestStore } from '@/src/store';
+import { useLocationStore, useQuestStore } from '@/src/store';
 import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
 import { Difficulty, FilterOptions, Quest } from '@/src/types';
 import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
@@ -16,6 +16,31 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import RealMapView, { Marker, Region } from 'react-native-maps';
+
+/**
+ * Renders 5 stars filled in proportion to the average rating. `New` is shown
+ * when the quest has no reviews yet so the player isn't misled into thinking
+ * the quest scored zero.
+ */
+function StarRow({ averageRating, reviewCount }: { averageRating?: number; reviewCount?: number }) {
+  if (!averageRating || !reviewCount) {
+    return <Text style={[Typography.caption, { color: Colors.textSecondary }]}>New</Text>;
+  }
+  const filled = Math.round(averageRating);
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 1 }}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <Text key={i} style={{ fontSize: 12, opacity: i <= filled ? 1 : 0.25 }}>
+          ⭐
+        </Text>
+      ))}
+      <Text style={[Typography.caption, { color: Colors.textSecondary, marginLeft: 4 }]}>
+        ({reviewCount})
+      </Text>
+    </View>
+  );
+}
 
 function QuestCard({ quest, onPress }: { quest: Quest; onPress: () => void }) {
   return (
@@ -58,46 +83,110 @@ function QuestCard({ quest, onPress }: { quest: Quest; onPress: () => void }) {
   );
 }
 
-function MapView({ quests, onQuestPress, onFilterPress, activeFiltersCount }: { quests: Quest[]; onQuestPress: (quest: Quest) => void; onFilterPress: () => void; activeFiltersCount: number }) {
+/**
+ * Real map showing every quest's first waypoint as a tappable marker. The
+ * map auto-centers on the player's current location; if location permission
+ * is denied or hasn't loaded yet, it falls back to the centroid of the
+ * available quests, then to a sensible default.
+ */
+function QuestsMap({ quests, onQuestPress, onFilterPress, activeFiltersCount }: { quests: Quest[]; onQuestPress: (quest: Quest) => void; onFilterPress: () => void; activeFiltersCount: number }) {
   const [selectedQuest, setSelectedQuest] = useState<Quest | null>(null);
+  const { currentLocation } = useLocationStore();
+  const mapRef = useRef<RealMapView>(null);
+
+  // A quest is mappable if its first waypoint actually has coords. Quests
+  // missing coords (older test data) get filtered out of the map view but
+  // still appear in the list view.
+  const mappableQuests = useMemo(
+    () =>
+      quests.filter(
+        (q) =>
+          q.firstWaypointLocation &&
+          Number.isFinite(q.firstWaypointLocation.latitude) &&
+          Number.isFinite(q.firstWaypointLocation.longitude) &&
+          !(q.firstWaypointLocation.latitude === 0 && q.firstWaypointLocation.longitude === 0),
+      ),
+    [quests],
+  );
+
+  const initialRegion: Region = useMemo(() => {
+    if (currentLocation) {
+      return {
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      };
+    }
+    if (mappableQuests.length) {
+      const first = mappableQuests[0].firstWaypointLocation;
+      return {
+        latitude: first.latitude,
+        longitude: first.longitude,
+        latitudeDelta: 0.5,
+        longitudeDelta: 0.5,
+      };
+    }
+    // Default: continental US center. Only matters before the first GPS fix
+    // and when there are zero mappable quests, which is mostly empty-state.
+    return { latitude: 39.5, longitude: -98.35, latitudeDelta: 30, longitudeDelta: 30 };
+  }, [currentLocation, mappableQuests]);
+
+  // Recenter on the user once we get the first GPS fix (initial region is
+  // captured at mount time and won't update otherwise).
+  useEffect(() => {
+    if (currentLocation && mapRef.current) {
+      mapRef.current.animateToRegion(
+        {
+          latitude: currentLocation.latitude,
+          longitude: currentLocation.longitude,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        },
+        500,
+      );
+    }
+    // Recenter once on the first non-null location. We don't want to fight
+    // the user every time they pan after that.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentLocation == null]);
 
   return (
     <View style={styles.mapContainer}>
-      <View style={styles.mapPlaceholder}>
-        <Text style={{ fontSize: 60 }}>🗺️</Text>
-        <Text style={[Typography.headerMedium, { marginTop: Spacing.md }]}>Quests Near You</Text>
-        <Text style={[Typography.caption, { color: Colors.textSecondary }]}>
-          {quests.length} quests available
+      <RealMapView
+        ref={mapRef}
+        style={StyleSheet.absoluteFill}
+        initialRegion={initialRegion}
+        showsUserLocation
+        showsMyLocationButton={false}
+      >
+        {mappableQuests.map((quest) => (
+          <Marker
+            key={quest.id}
+            coordinate={quest.firstWaypointLocation}
+            title={quest.title}
+            description={quest.tagline}
+            pinColor={selectedQuest?.id === quest.id ? Colors.accentYellow : Colors.cyan}
+            onPress={() => setSelectedQuest(quest)}
+          />
+        ))}
+      </RealMapView>
+
+      <TouchableOpacity style={styles.filterIconButton} onPress={onFilterPress}>
+        <Text style={styles.filterIcon}>🎚️</Text>
+        {activeFiltersCount > 0 && (
+          <View style={styles.filterBadge}>
+            <Text style={styles.filterBadgeText}>{activeFiltersCount}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+
+      <View style={styles.mapCountPill} pointerEvents="none">
+        <Text style={[Typography.caption, { color: Colors.textPrimary }]}>
+          {mappableQuests.length} quest{mappableQuests.length === 1 ? '' : 's'} nearby
         </Text>
-        <View style={styles.mapPins}>
-          {quests.slice(0, 8).map((quest, index) => (
-            <TouchableOpacity
-              key={quest.id}
-              style={[
-                styles.mapPin,
-                { 
-                  left: 40 + (index % 4) * 70, 
-                  top: 60 + Math.floor(index / 4) * 100 + (index % 2 === 0 ? 0 : 40) 
-                },
-                selectedQuest?.id === quest.id && styles.mapPinSelected
-              ]}
-              onPress={() => setSelectedQuest(quest)}
-            >
-              <Text style={styles.mapPinText}>📍</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        
-        <TouchableOpacity style={styles.filterIconButton} onPress={onFilterPress}>
-          <Text style={styles.filterIcon}>🎚️</Text>
-          {activeFiltersCount > 0 && (
-            <View style={styles.filterBadge}>
-              <Text style={styles.filterBadgeText}>{activeFiltersCount}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
       </View>
-      
+
       {selectedQuest && (
         <TouchableOpacity style={styles.mapPreviewCard} onPress={() => onQuestPress(selectedQuest)}>
           {selectedQuest.coverImageUrl ? (
@@ -111,8 +200,7 @@ function MapView({ quests, onQuestPress, onFilterPress, activeFiltersCount }: { 
             <Text style={Typography.headerMedium} numberOfLines={1}>{selectedQuest.title}</Text>
             <Text style={[Typography.caption, { color: Colors.textSecondary }]} numberOfLines={1}>{selectedQuest.tagline}</Text>
             <View style={styles.previewMeta}>
-              <Text style={styles.star}>⭐ {selectedQuest.averageRating?.toFixed(1)}</Text>
-              <Text style={[Typography.caption, { color: Colors.accentCyan }]}>{selectedQuest.difficulty}</Text>
+              <StarRow averageRating={selectedQuest.averageRating} reviewCount={selectedQuest.reviewCount} />
               <Text style={[Typography.headerMedium, { color: Colors.accentYellow }]}>
                 {selectedQuest.isFree ? 'Free' : `$${selectedQuest.price.toFixed(2)}`}
               </Text>
@@ -297,7 +385,7 @@ export default function PlayScreen() {
           )}
         </View>
       ) : viewMode === 'map' ? (
-        <MapView
+        <QuestsMap
           quests={filteredQuests}
           onQuestPress={handleQuestPress}
           onFilterPress={() => setShowFilters(true)}
@@ -357,13 +445,9 @@ const styles = StyleSheet.create({
   toggleButtonActive: { backgroundColor: Colors.cyan },
   toggleText: { color: Colors.textSecondary, fontWeight: '600' },
   toggleTextActive: { color: Colors.primaryBackground },
-  mapContainer: { flex: 1, margin: Spacing.md, marginTop: 0 },
-  mapPlaceholder: { flex: 1, backgroundColor: Colors.surface, borderRadius: 16, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: Colors.border, position: 'relative', overflow: 'hidden' },
-  mapPins: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-  mapPin: { position: 'absolute', width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  mapPinSelected: { transform: [{ scale: 1.4 }] },
-  mapPinText: { fontSize: 32 },
+  mapContainer: { flex: 1, margin: Spacing.md, marginTop: 0, borderRadius: 16, overflow: 'hidden', borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.surface },
   filterIconButton: { position: 'absolute', top: Spacing.md, right: Spacing.md, width: 50, height: 50, backgroundColor: Colors.inputBg, borderRadius: 25, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: Colors.border },
+  mapCountPill: { position: 'absolute', top: Spacing.md, left: Spacing.md, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, backgroundColor: Colors.inputBg, borderRadius: 16, borderWidth: 1.5, borderColor: Colors.border },
   filterIcon: { fontSize: 24 },
   filterBadge: { position: 'absolute', top: -4, right: -4, backgroundColor: Colors.hotPink, width: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   filterBadgeText: { color: Colors.textPrimary, fontSize: 12, fontWeight: '700' },
