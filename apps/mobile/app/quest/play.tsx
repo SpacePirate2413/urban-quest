@@ -445,7 +445,11 @@ function ScenePlayer({
           </View>
         )}
 
-        {scene.mediaType === 'audio' && (
+        {/* Show the custom play button for both audio and video. Video also
+            has expo-av's useNativeControls overlay, but that only appears
+            after the user taps the video — without this button there's no
+            visible "play" affordance until they figure that out. */}
+        {(scene.mediaType === 'audio' || scene.mediaType === 'video') && (
           <TouchableOpacity style={styles.playButton} onPress={togglePlay}>
             <Text style={styles.playButtonText}>{isPlaying ? '⏸' : '▶️'}</Text>
           </TouchableOpacity>
