@@ -105,11 +105,48 @@ const DESCRIPTIONS = {
     'Reviewing a quest that doesn\'t exist returns 404 cleanly.',
   'tests/admin.test.ts::Admin: quest-level review > rejects a payload with an invalid status enum':
     'Reviewer must pick approved or rejected — anything else is rejected with 400.',
+  // src/features/quests/__tests__/isQuestPlayable.test.ts (Unit)
+  'src/features/quests/__tests__/isQuestPlayable.test.ts::isQuestPlayable > returns true for the minimal valid shape (one waypoint, one scene, END choice)':
+    'A quest with one waypoint and one fully-formed scene is playable.',
+  'src/features/quests/__tests__/isQuestPlayable.test.ts::isQuestPlayable > rejects a quest with no waypoints':
+    'Without waypoints, players have nowhere to go — not playable.',
+  'src/features/quests/__tests__/isQuestPlayable.test.ts::isQuestPlayable > rejects a quest with no scenes':
+    'Without scenes, there\'s no story — not playable.',
+  'src/features/quests/__tests__/isQuestPlayable.test.ts::isQuestPlayable > rejects a scene with an empty question':
+    'Every scene must ask the player a question; an empty string fails.',
+  'src/features/quests/__tests__/isQuestPlayable.test.ts::isQuestPlayable > rejects a scene with a whitespace-only question':
+    'Whitespace doesn\'t count as a real question.',
+  'src/features/quests/__tests__/isQuestPlayable.test.ts::isQuestPlayable > rejects a scene with a null question':
+    'Null question → not playable.',
+  'src/features/quests/__tests__/isQuestPlayable.test.ts::isQuestPlayable > rejects a scene with no mediaUrl':
+    'Every scene needs audio or video attached before it can be played.',
+  'src/features/quests/__tests__/isQuestPlayable.test.ts::isQuestPlayable > rejects a scene whose choices field is not valid JSON':
+    'Corrupted choices JSON is treated as unplayable, not a crash.',
+  'src/features/quests/__tests__/isQuestPlayable.test.ts::isQuestPlayable > rejects a scene whose choices array is empty':
+    'A scene with no choices to pick is a dead end.',
+  'src/features/quests/__tests__/isQuestPlayable.test.ts::isQuestPlayable > rejects a scene whose choices field parses to a non-array':
+    'Choices must be an array; an object slipped in is rejected.',
+  'src/features/quests/__tests__/isQuestPlayable.test.ts::isQuestPlayable > rejects a choice with empty text':
+    'Players need to read what they\'re picking; empty choice text isn\'t allowed.',
+  'src/features/quests/__tests__/isQuestPlayable.test.ts::isQuestPlayable > rejects a choice pointing at a sceneId that does not exist on the quest':
+    'Choices that route to a deleted/missing scene make the quest unplayable.',
+  'src/features/quests/__tests__/isQuestPlayable.test.ts::isQuestPlayable > accepts a choice pointing at a valid sceneId on the quest':
+    'Choices routing to a real scene in the same quest are valid.',
+  'src/features/quests/__tests__/isQuestPlayable.test.ts::isQuestPlayable > accepts a legacy choice pointing at a valid waypointId (back-compat)':
+    'Old-format choices that point at a waypointId still work (read-path falls back to first scene at that waypoint).',
+  'src/features/quests/__tests__/isQuestPlayable.test.ts::isQuestPlayable > rejects a legacy choice pointing at a waypointId that does not exist':
+    'Legacy waypointId choices must still resolve — dangling refs fail.',
+  'src/features/quests/__tests__/isQuestPlayable.test.ts::isQuestPlayable > rejects a choice with neither sceneId nor waypointId set':
+    'A choice with no destination at all is unplayable.',
+  'src/features/quests/__tests__/isQuestPlayable.test.ts::isQuestPlayable > accepts the END sentinel as a routing target without needing a real id':
+    'Choices marked __END__ correctly terminate the quest without needing to point at a real scene.',
 };
 
-// Phase 1 = API integration tests. We tag every test as Integration; later
-// phases will introduce Unit and E2E.
-function categorize(_filePath) {
+// Tests collocated with source (apps/api/src/**) are Unit tests — pure
+// functions, no DB, no HTTP. Tests under apps/api/tests/** are Integration —
+// they boot the Fastify app and hit a real test DB. E2E comes in a later phase.
+function categorize(filePath) {
+  if (filePath.startsWith('src/')) return 'Unit';
   return 'Integration';
 }
 
