@@ -32,6 +32,11 @@ export const GENRES = [
 // the store so timers survive across set() calls.
 const sceneSaveTimers = {};
 
+// Same pattern for waypoints. Without this, edits to waypoint name/notes/etc.
+// only updated local state and were lost on reload — see commit history for
+// the data-loss bug this fixes.
+const waypointSaveTimers = {};
+
 // Load persisted data from localStorage
 const loadPersistedState = () => {
   try {
@@ -361,18 +366,74 @@ export const useWriterStore = create((set, get) => ({
     }
   },
 
-  updateWaypoint: (questId, waypointId, updates) => set((state) => ({
-    quests: state.quests.map((q) =>
-      q.id === questId
-        ? {
-            ...q,
-            waypoints: q.waypoints.map((wp) =>
-              wp.id === waypointId ? { ...wp, ...updates } : wp
-            ),
-          }
-        : q
-    ),
-  })),
+  // Save state for the per-waypoint indicator (idle/saving/saved/error),
+  // mirrored from sceneSaveState.
+  waypointSaveState: {},
+
+  updateWaypoint: (questId, waypointId, updates) => {
+    // 1. Optimistic local update so the UI reflects keystrokes immediately.
+    set((state) => ({
+      quests: state.quests.map((q) =>
+        q.id === questId
+          ? {
+              ...q,
+              waypoints: q.waypoints.map((wp) =>
+                wp.id === waypointId ? { ...wp, ...updates } : wp
+              ),
+            }
+          : q
+      ),
+    }));
+
+    // 2. Filter to fields the server's waypointSchema accepts. Anything
+    // outside this set (e.g. UI-only flags) stays local-only.
+    const SERVER_FIELDS = ['name', 'description', 'notes', 'photoUrl', 'lat', 'lng'];
+    const serverUpdates = {};
+    for (const k of SERVER_FIELDS) {
+      if (k in updates) serverUpdates[k] = updates[k];
+    }
+    if (Object.keys(serverUpdates).length === 0) return;
+
+    // Skip API for local-only entities. `wp-` prefix = waypoint never reached
+    // the server (offline-mode addWaypoint fallback). `quest-` prefix = parent
+    // quest is local-only too, so the child can't be persisted anyway.
+    if (waypointId.startsWith('wp-')) return;
+    if (questId.startsWith('quest-')) return;
+
+    // 3. Debounce: 500ms idle since the last keystroke, then save.
+    if (!waypointSaveTimers[waypointId]) waypointSaveTimers[waypointId] = {};
+    if (waypointSaveTimers[waypointId].timer) clearTimeout(waypointSaveTimers[waypointId].timer);
+    // Coalesce: keep the latest value of every touched field in a single payload.
+    waypointSaveTimers[waypointId].pending = {
+      ...(waypointSaveTimers[waypointId].pending || {}),
+      ...serverUpdates,
+    };
+
+    waypointSaveTimers[waypointId].timer = setTimeout(async () => {
+      const payload = waypointSaveTimers[waypointId].pending;
+      waypointSaveTimers[waypointId].pending = null;
+      waypointSaveTimers[waypointId].timer = null;
+      set((state) => ({
+        waypointSaveState: { ...state.waypointSaveState, [waypointId]: { status: 'saving' } },
+      }));
+      try {
+        await api.updateWaypoint(waypointId, payload);
+        set((state) => ({
+          waypointSaveState: {
+            ...state.waypointSaveState,
+            [waypointId]: { status: 'saved', savedAt: Date.now() },
+          },
+        }));
+      } catch (err) {
+        set((state) => ({
+          waypointSaveState: {
+            ...state.waypointSaveState,
+            [waypointId]: { status: 'error', error: err.message },
+          },
+        }));
+      }
+    }, 500);
+  },
 
   deleteWaypoint: (questId, waypointId) => set((state) => ({
     quests: state.quests.map((q) =>

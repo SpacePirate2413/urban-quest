@@ -109,6 +109,19 @@ const DESCRIPTIONS = {
     'Reviewing a quest that doesn\'t exist returns 404 cleanly.',
   'tests/admin.test.ts::Admin: quest-level review > rejects a payload with an invalid status enum':
     'Reviewer must pick approved or rejected — anything else is rejected with 400.',
+  'tests/admin.test.ts::Admin: scene order in submissions feed > returns scenes in addScene insertion order, with sceneIndex 0..N matching it':
+    'Regression test: scenes appear in the admin queue in the order they were added (Scene 1 = first added). If this fails, scenes will look mis-numbered to the reviewer.',
+  // tests/waypoints.test.ts
+  'tests/waypoints.test.ts::Waypoint CRUD > creates a waypoint under a quest the user owns':
+    'A creator can add a waypoint to their own quest.',
+  'tests/waypoints.test.ts::Waypoint CRUD > rejects creating a waypoint under another user\'s quest':
+    'Adding a waypoint to someone else\'s quest is rejected with 404.',
+  'tests/waypoints.test.ts::Waypoint CRUD > PATCHes a waypoint name and the new name persists across reads':
+    'Regression test for the autosave data-loss bug: editing a waypoint name now actually persists to the server (not just local state).',
+  'tests/waypoints.test.ts::Waypoint CRUD > rejects PATCH from a non-owner with 404':
+    'A different user cannot rename your waypoints.',
+  'tests/waypoints.test.ts::Waypoint CRUD > deletes a waypoint the user owns':
+    'A creator can delete their own waypoints.',
   // src/features/quests/__tests__/isQuestPlayable.test.ts (Unit)
   'src/features/quests/__tests__/isQuestPlayable.test.ts::isQuestPlayable > returns true for the minimal valid shape (one waypoint, one scene, END choice)':
     'A quest with one waypoint and one fully-formed scene is playable.',
