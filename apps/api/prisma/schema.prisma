@@ -58,7 +58,7 @@ model Quest {
   coverImage  String?
   usesAI      Boolean  @default(false)
   narratorVoiceId String?
-  mediaType   String?  // audio | video — creator's declared format for all scenes
+  mediaType   String?  // audio | video | both — creator's declared format. 'both' allows mixed scenes.
   submissionStatus String? // draft | pending | approved | rejected
   
   // Stats

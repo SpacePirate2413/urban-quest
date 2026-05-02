@@ -60,6 +60,10 @@ const DESCRIPTIONS = {
     'A creator can delete their own quest.',
   'tests/quests.test.ts::Quests CRUD > accepts ageRating E10+ (the value the creator-station UI offers)':
     'The age rating dropdown in the creator UI matches what the API accepts.',
+  'tests/quests.test.ts::Quests CRUD > accepts mediaType=both for mixed-format quests':
+    'A creator can mark a quest as "both" (mixed audio + video scenes) — matches the new Quest Info dropdown option.',
+  'tests/quests.test.ts::Quests CRUD > rejects an unknown mediaType value':
+    'Only audio, video, or both are valid mediaType values — anything else is rejected with 400.',
   // quest-publish.test.ts
   'tests/quest-publish.test.ts::Quest publish + submit-for-review > refuses to publish a quest with no waypoints':
     'You can\'t publish a quest with no waypoints — the API blocks it.',

@@ -146,8 +146,8 @@ export interface Quest {
   createdAt: Date;
   firstWaypointLocation: LocationCoords;
   /** Creator-declared format for the whole quest. Set in the creator
-   *  station Quest Info tab; required for submission. */
-  mediaType?: 'audio' | 'video';
+   *  station Quest Info tab; required for submission. 'both' = mixed scenes. */
+  mediaType?: 'audio' | 'video' | 'both';
 }
 
 export interface ScoutedWaypoint {
@@ -170,8 +170,9 @@ export interface FilterOptions {
   maxDistance?: number;
   ageRating?: AgeRating;
   playerCount?: number;
-  /** Filter by quest format — audio-only or video. Undefined = both. */
-  mediaType?: 'audio' | 'video';
+  /** Filter by quest format. Exact match — 'audio' shows only audio quests,
+   *  'both' shows only mixed-format quests, undefined shows everything. */
+  mediaType?: 'audio' | 'video' | 'both';
 }
 
 export type ViewMode = 'map' | 'list';

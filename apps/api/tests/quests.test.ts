@@ -125,4 +125,23 @@ describe('Quests CRUD', () => {
     expect(res.statusCode).toBe(201);
     expect(JSON.parse(res.body).ageRating).toBe('E10+');
   });
+
+  it('accepts mediaType=both for mixed-format quests', async () => {
+    const { authHeaders } = await createTestUser(app);
+    const res = await app.inject({
+      method: 'POST', url: '/api/quests', headers: authHeaders,
+      payload: { title: 'Mixed Quest', mediaType: 'both' },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(JSON.parse(res.body).mediaType).toBe('both');
+  });
+
+  it('rejects an unknown mediaType value', async () => {
+    const { authHeaders } = await createTestUser(app);
+    const res = await app.inject({
+      method: 'POST', url: '/api/quests', headers: authHeaders,
+      payload: { title: 'Bad', mediaType: 'hologram' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
 });

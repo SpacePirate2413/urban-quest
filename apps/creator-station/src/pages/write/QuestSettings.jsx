@@ -237,12 +237,13 @@ export function QuestSettings({ questId }) {
                 onChange={(e) => handleUpdate('mediaType', e.target.value)}
                 options={[
                   { value: 'audio', label: 'Audio only' },
-                  { value: 'video', label: 'Video' },
+                  { value: 'video', label: 'Video only' },
+                  { value: 'both', label: 'Both (mixed scenes)' },
                 ]}
                 placeholder="Select format..."
               />
               <p className="text-xs text-white/50 mt-1">
-                Format you'll use across all scenes — audio narration or video.
+                Pick "Both" if some scenes are audio and others are video.
               </p>
             </div>
           </div>

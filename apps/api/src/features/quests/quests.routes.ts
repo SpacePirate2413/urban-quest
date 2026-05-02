@@ -35,7 +35,10 @@ const createQuestSchema = z.object({
   ).optional(),
   usesAI: z.boolean().optional(),
   narratorVoiceId: z.string().optional(),
-  mediaType: z.enum(['audio', 'video']).optional(),
+  // 'both' = mixed-format quest where individual scenes can be audio or video.
+  // 'audio' / 'video' = every scene must be that single format. Players can
+  // filter by exact match in the mobile explore feed.
+  mediaType: z.enum(['audio', 'video', 'both']).optional(),
   estimatedDuration: z.number().int().positive().optional(),
   startLat: z.number().optional(),
   startLng: z.number().optional(),

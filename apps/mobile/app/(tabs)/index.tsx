@@ -377,7 +377,8 @@ function FilterModal({ visible, onClose, filters, onFilterChange }: { visible: b
             <View style={styles.filterOptions}>
               {[
                 { key: 'audio', label: '🎧 Audio only' },
-                { key: 'video', label: '🎬 Video' },
+                { key: 'video', label: '🎬 Video only' },
+                { key: 'both', label: '🎬🎧 Both' },
               ].map((m) => (
                 <TouchableOpacity
                   key={m.key}
@@ -385,7 +386,7 @@ function FilterModal({ visible, onClose, filters, onFilterChange }: { visible: b
                   onPress={() =>
                     onFilterChange({
                       ...filters,
-                      mediaType: filters.mediaType === m.key ? undefined : (m.key as 'audio' | 'video'),
+                      mediaType: filters.mediaType === m.key ? undefined : (m.key as 'audio' | 'video' | 'both'),
                     })
                   }
                 >
