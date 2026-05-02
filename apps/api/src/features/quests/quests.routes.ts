@@ -27,8 +27,7 @@ const createQuestSchema = z.object({
   description: z.string().optional(),
   tagline: z.string().max(200).optional(),
   genre: z.string().optional(),
-  difficulty: z.enum(['easy', 'medium', 'hard', 'expert']).optional(),
-  ageRating: z.enum(['E', 'T', 'M']).optional(),
+  ageRating: z.enum(['E', 'E10+', 'T', 'M']).optional(),
   price: priceTierSchema.optional(),
   coverImage: z.string().refine(
     (val) => /^https?:\/\//.test(val) || /^data:image\//.test(val),
@@ -70,7 +69,7 @@ export async function questRoutes(app: FastifyInstance) {
   // get the unfiltered public list (minus banned/deleted authors, which are filtered
   // unconditionally inside the service).
   app.get('/public', async (request) => {
-    const { genre, difficulty, city, minPrice, maxPrice, limit, offset } = request.query as any;
+    const { genre, city, minPrice, maxPrice, limit, offset } = request.query as any;
 
     let viewerId: string | undefined;
     try {
@@ -83,7 +82,6 @@ export async function questRoutes(app: FastifyInstance) {
     return questService.getPublishedQuests(
       {
         genre,
-        difficulty,
         city,
         minPrice: minPrice ? Number(minPrice) : undefined,
         maxPrice: maxPrice ? Number(maxPrice) : undefined,
@@ -298,19 +296,35 @@ export async function questRoutes(app: FastifyInstance) {
       return { success: true };
     });
 
-    // Upload media for a scene
+    // Upload media for a scene.
+    //
+    // Failure modes worth knowing about (all surfaced as Safari "Load failed"
+    // before this rewrite, because errors here aborted the response without a
+    // status code):
+    //   - request.file() rejects when the multipart parser sees malformed body
+    //   - pipeline() rejects on disk errors or premature stream close
+    //   - data.file.truncated indicates the 500MB cap tripped
+    // We log + clean up the partial file in every error path so the client
+    // gets a real status code and we have something to grep in logs.
     protectedRoutes.post('/scenes/:sceneId/upload', async (request, reply) => {
       const userId = (request.user as any).id;
       const { sceneId } = request.params as { sceneId: string };
+      const log = request.log.child({ route: 'scene-upload', sceneId, userId });
 
-      const data = await request.file();
+      let data;
+      try {
+        data = await request.file();
+      } catch (err) {
+        log.error({ err }, 'multipart parse failed');
+        return reply.status(400).send({ error: 'Could not parse upload' });
+      }
       if (!data) {
         return reply.status(400).send({ error: 'No file uploaded' });
       }
 
       if (!ALLOWED_TYPES.includes(data.mimetype)) {
-        return reply.status(400).send({ 
-          error: 'Invalid file type. Allowed: MP3, WAV, M4A, MP4, MOV, WebM' 
+        return reply.status(400).send({
+          error: 'Invalid file type. Allowed: MP3, WAV, M4A, MP4, MOV, WebM',
         });
       }
 
@@ -319,31 +333,51 @@ export async function questRoutes(app: FastifyInstance) {
       const storedName = `${sceneId}-${Date.now()}${ext}`;
       const filePath = path.join(UPLOADS_DIR, storedName);
 
-      // Ensure uploads dir exists
-      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+      try {
+        fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+      } catch (err) {
+        log.error({ err, UPLOADS_DIR }, 'failed to create uploads dir');
+        return reply.status(500).send({ error: 'Server storage unavailable' });
+      }
 
-      // Stream file to disk
-      await pipeline(data.file, fs.createWriteStream(filePath));
+      log.info(
+        { mimetype: data.mimetype, filename: data.filename, storedName },
+        'upload started',
+      );
 
-      // Check if the file was truncated (exceeded size limit)
+      try {
+        await pipeline(data.file, fs.createWriteStream(filePath));
+      } catch (err) {
+        log.error({ err, storedName }, 'pipeline failed during upload');
+        await fs.promises.unlink(filePath).catch(() => {});
+        return reply.status(500).send({ error: 'Upload failed while writing file' });
+      }
+
       if (data.file.truncated) {
-        fs.unlinkSync(filePath);
+        await fs.promises.unlink(filePath).catch(() => {});
         return reply.status(413).send({ error: 'File too large. Maximum 500MB.' });
       }
 
       const mediaUrl = `/api/media/${storedName}`;
 
-      // Update scene in DB (status stays as-is; batch submit sets it to pending)
-      const scene = await questService.updateScene(sceneId, userId, {
-        mediaUrl,
-        mediaType,
-      });
+      let scene;
+      try {
+        scene = await questService.updateScene(sceneId, userId, {
+          mediaUrl,
+          mediaType,
+        });
+      } catch (err) {
+        log.error({ err, storedName }, 'updateScene failed after upload');
+        await fs.promises.unlink(filePath).catch(() => {});
+        return reply.status(500).send({ error: 'Could not attach media to scene' });
+      }
 
       if (!scene) {
-        fs.unlinkSync(filePath);
+        await fs.promises.unlink(filePath).catch(() => {});
         return reply.status(404).send({ error: 'Scene not found or not authorized' });
       }
 
+      log.info({ storedName, mediaUrl }, 'upload complete');
       return {
         mediaUrl,
         mediaType,

@@ -288,7 +288,7 @@ Urban Quest is now a **pnpm workspaces monorepo** with three apps:
 **Media Uploads** — Scene audio/video and scouted waypoint media are uploaded via multipart form data to `apps/api/uploads/` and served at `/api/media/`. No more blob URLs.
 
 **Mobile App** — A full React Native app with:
-- **Explore tab** — Browse and search published quests with filters (genre, difficulty, city)
+- **Explore tab** — Browse and search published quests with filters (genre, city)
 - **Library tab** — View purchased quests and resume progress
 - **Scout tab** — Drop GPS pins, attach photos/videos/audio recordings, and save waypoints for later use in the Creator Station
 - **Profile tab** — User settings and account management

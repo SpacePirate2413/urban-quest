@@ -34,7 +34,6 @@ export default function CheckoutScreen() {
             coverImageUrl: data.coverImage || '',
             estimatedDurationMinutes: data.estimatedDuration || 60,
             estimatedDistanceMeters: data.totalDistance || 0,
-            difficulty: data.difficulty || 'Moderate',
             price: data.price ?? 0,
             isFree: (data.price ?? 0) === 0,
             ageRating: data.ageRating || '4+',
@@ -143,7 +142,7 @@ export default function CheckoutScreen() {
           <View style={styles.questInfo}>
             <Text style={Typography.headerMedium}>{quest.title}</Text>
             <Text style={[Typography.caption, { color: Colors.textSecondary }]}>
-              {quest.estimatedDurationMinutes} min · {quest.difficulty}
+              {quest.estimatedDurationMinutes} min
             </Text>
             <Text style={[Typography.caption, { color: Colors.accentCyan, marginTop: Spacing.xs }]}>
               30 days access

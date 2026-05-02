@@ -78,7 +78,6 @@ export default function QuestDetailScreen() {
             coverImageUrl: data.coverImage || '',
             estimatedDurationMinutes: data.estimatedDuration || 60,
             estimatedDistanceMeters: data.totalDistance || 0,
-            difficulty: data.difficulty || 'Moderate',
             price: data.price ?? 0,
             isFree: (data.price ?? 0) === 0,
             ageRating: data.ageRating || '4+',

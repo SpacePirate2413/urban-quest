@@ -59,7 +59,6 @@ export async function getSubmissions(filters: SubmissionFilters = {}, limit = 50
       questDescription: quest.description,
       tagline: quest.tagline,
       genre: quest.genre,
-      difficulty: quest.difficulty,
       ageRating: quest.ageRating,
       price: quest.price,
       status: quest.status,

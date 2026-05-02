@@ -136,7 +136,6 @@ class ApiClient {
   // Quests
   async getPublishedQuests(filters: {
     genre?: string;
-    difficulty?: string;
     city?: string;
     minPrice?: number;
     maxPrice?: number;

@@ -52,8 +52,7 @@ model Quest {
   description String?
   tagline     String?
   genre       String   @default("Adventure")
-  difficulty  String   @default("medium") // easy | medium | hard | expert
-  ageRating   String   @default("E") // E | T | M
+  ageRating   String   @default("E") // E | E10+ | T | M
   price       Float    @default(0)
   status      String   @default("draft") // draft | review | published | archived
   coverImage  String?

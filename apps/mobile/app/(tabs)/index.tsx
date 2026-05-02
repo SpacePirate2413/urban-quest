@@ -1,7 +1,7 @@
 import { CATEGORIES } from '@/src/data/mockData';
 import { useLocationStore, useQuestStore } from '@/src/store';
 import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
-import { Difficulty, FilterOptions, LocationCoords, Quest } from '@/src/types';
+import { FilterOptions, LocationCoords, Quest } from '@/src/types';
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -114,7 +114,6 @@ function QuestCard({ quest, onPress }: { quest: Quest; onPress: () => void }) {
         </Text>
         <View style={styles.questMeta}>
           <Text style={styles.star}>⭐ {quest.averageRating?.toFixed(1) || 'New'}</Text>
-          <Text style={[Typography.caption, { color: Colors.accentCyan }]}>{quest.difficulty}</Text>
           <Text style={Typography.caption}>{quest.estimatedDurationMinutes} min</Text>
         </View>
         <View style={styles.questFooter}>
@@ -348,19 +347,6 @@ function FilterModal({ visible, onClose, filters, onFilterChange }: { visible: b
               ))}
             </View>
 
-            <Text style={[Typography.headerMedium, { marginTop: Spacing.lg }]}>Difficulty</Text>
-            <View style={styles.filterOptions}>
-              {Object.values(Difficulty).map((diff) => (
-                <TouchableOpacity
-                  key={diff}
-                  style={[styles.filterOption, filters.difficulty === diff && styles.filterOptionActive]}
-                  onPress={() => onFilterChange({ ...filters, difficulty: filters.difficulty === diff ? undefined : diff })}
-                >
-                  <Text style={[styles.filterOptionText, filters.difficulty === diff && styles.filterOptionTextActive]}>{diff}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
             <Text style={[Typography.headerMedium, { marginTop: Spacing.lg }]}>Category</Text>
             <View style={styles.filterOptions}>
               {CATEGORIES.map((cat) => (
@@ -521,7 +507,6 @@ export default function PlayScreen() {
 
   const activeFiltersCount = [
     filters.priceRange,
-    filters.difficulty,
     filters.category,
     filters.minRating,
     filters.mediaType,
@@ -534,7 +519,6 @@ export default function PlayScreen() {
       if (filters.priceRange === 'under5' && quest.price >= 5) return false;
       if (filters.priceRange === 'under10' && quest.price >= 10) return false;
       if (filters.priceRange === 'over10' && quest.price < 10) return false;
-      if (filters.difficulty && quest.difficulty !== filters.difficulty) return false;
       if (filters.category && quest.category !== filters.category) return false;
       if (filters.minRating && (quest.averageRating || 0) < filters.minRating) return false;
       if (filters.mediaType && quest.mediaType !== filters.mediaType) return false;

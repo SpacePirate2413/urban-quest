@@ -66,7 +66,6 @@ Urban Quest is a location-based storytelling game where players purchase and pla
   - Price (or "Free with Ads" tag)
   - Star rating (5-star scale)
   - Creator username (tappable → creator profile)
-  - Difficulty: "Creator: Moderate | Players: 4.2/5"
 - Tapping the card → Quest Detail Page
 
 ### List View
@@ -78,7 +77,6 @@ Urban Quest is a location-based storytelling game where players purchase and pla
 - **Search bar:** Type any location/city to search other areas
 - **Filter options:**
   - Price range (Free, $0.99-$4.99, $5-$9.99, $10+)
-  - Difficulty (Easy, Moderate, Difficult)
   - Duration/estimated time
   - Category/genre
   - Player count (Solo, 2-4 players, 5+ players)
@@ -103,7 +101,6 @@ Urban Quest is a location-based storytelling game where players purchase and pla
 - First waypoint location on mini-map
 - Estimated walking distance (total quest)
 - Estimated duration
-- Difficulty: "Creator: Moderate | Players: 4.2/5"
 - Player count
 - Age rating
 - Category/genre
@@ -414,5 +411,5 @@ All questions resolved during design discussion. See conversation history for fu
 
 1. Review this document for any corrections
 2. Update API schema for new player-related models
-3. Update Creator Station with difficulty selector and reviews display
+3. Update Creator Station with reviews display
 4. Begin mobile app implementation (MVP features)

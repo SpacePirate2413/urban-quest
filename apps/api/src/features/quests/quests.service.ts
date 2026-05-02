@@ -6,7 +6,6 @@ export interface CreateQuestInput {
   description?: string;
   tagline?: string;
   genre?: string;
-  difficulty?: string;
   ageRating?: string;
   price?: number;
   coverImage?: string;
@@ -26,7 +25,6 @@ export interface UpdateQuestInput extends Partial<CreateQuestInput> {
 export interface QuestFilters {
   status?: string;
   genre?: string;
-  difficulty?: string;
   city?: string;
   minPrice?: number;
   maxPrice?: number;
@@ -81,7 +79,6 @@ export async function getQuests(filters: QuestFilters = {}, limit = 50, offset =
 
   if (filters.status) where.status = filters.status;
   if (filters.genre) where.genre = filters.genre;
-  if (filters.difficulty) where.difficulty = filters.difficulty;
   if (filters.city) where.city = { contains: filters.city };
   if (filters.authorId) where.authorId = filters.authorId;
   if (filters.minPrice !== undefined || filters.maxPrice !== undefined) {
@@ -201,7 +198,7 @@ export function isQuestPlayable(quest: {
 // Fields that are considered "content" — editing any of these on a published
 // quest means the changes must be re-reviewed before they go live.
 const CONTENT_FIELDS = new Set([
-  'title', 'description', 'tagline', 'genre', 'difficulty', 'ageRating',
+  'title', 'description', 'tagline', 'genre', 'ageRating',
   'price', 'coverImage', 'usesAI', 'narratorVoiceId', 'mediaType',
   'estimatedDuration',
 ]);

@@ -11,12 +11,6 @@ export enum QuestStatus {
   REJECTED = 'REJECTED',
 }
 
-export enum Difficulty {
-  EASY = 'Easy',
-  MODERATE = 'Moderate',
-  DIFFICULT = 'Difficult',
-}
-
 export enum AgeRating {
   FOUR_PLUS = '4+',
   NINE_PLUS = '9+',
@@ -137,9 +131,6 @@ export interface Quest {
   previewMediaUrl?: string;
   estimatedDurationMinutes: number;
   estimatedDistanceMeters: number;
-  difficulty: Difficulty;
-  playerDifficultyRating?: number;
-  playerDifficultyCount?: number;
   price: number;
   isFree: boolean;
   ageRating: AgeRating;
@@ -173,7 +164,6 @@ export interface ScoutedWaypoint {
 
 export interface FilterOptions {
   priceRange?: 'free' | 'under5' | 'under10' | 'over10';
-  difficulty?: Difficulty;
   maxDuration?: number;
   category?: string;
   minRating?: number;

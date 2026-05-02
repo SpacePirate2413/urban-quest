@@ -272,7 +272,6 @@ export const useQuestStore = create<QuestState>((set) => ({
     try {
       const { quests } = await api.getPublishedQuests({
         genre: filters.category,
-        difficulty: filters.difficulty,
         minPrice: filters.priceRange === 'free' ? 0 : undefined,
         maxPrice: filters.priceRange === 'free' ? 0 : filters.priceRange === 'under5' ? 5 : filters.priceRange === 'under10' ? 10 : undefined,
       });
@@ -293,7 +292,6 @@ export const useQuestStore = create<QuestState>((set) => ({
         coverImageUrl: q.coverImage || '',
         estimatedDurationMinutes: q.estimatedDuration || 60,
         estimatedDistanceMeters: q.totalDistance || 0,
-        difficulty: (q.difficulty || 'Moderate') as any,
         price: q.price ?? 0,
         isFree: (q.price ?? 0) === 0,
         ageRating: (q.ageRating || '4+') as any,
