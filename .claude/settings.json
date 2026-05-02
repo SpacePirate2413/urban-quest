@@ -6,5 +6,19 @@
       "mcp__Claude_Preview__preview_screenshot",
       "mcp__Claude_Preview__preview_console_logs"
     ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/test-stop-hook.sh\"",
+            "timeout": 60,
+            "statusMessage": "Running Phase 1 tests…"
+          }
+        ]
+      }
+    ]
   }
 }

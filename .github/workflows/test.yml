@@ -1,0 +1,41 @@
+name: API Tests (Phase 1)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  api-tests:
+    name: Run Phase 1 API integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @urban-quest/api db:generate
+
+      - name: Run tests + update Testing.md
+        run: node scripts/update-testing-doc.mjs
+
+      - name: Upload Testing.md as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testing-doc
+          path: Testing.md

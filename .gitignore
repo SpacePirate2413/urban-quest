@@ -47,3 +47,7 @@ android/
 
 # test exhaust
 .windsurf/.last-test-run
+apps/api/test-results.json
+apps/api/test.db
+apps/api/test.db-journal
+apps/api/coverage/
