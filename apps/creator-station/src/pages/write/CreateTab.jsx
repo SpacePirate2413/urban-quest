@@ -523,15 +523,17 @@ export function CreateTab({ questId }) {
                 placeholder="What will you do next?"
               />
 
-              {/* Choices — always active */}
+              {/* Next Destination(s) — always active. Each row is a player-
+                  facing choice with a destination dropdown that routes to
+                  another scene (or ends the quest). */}
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <label className="font-bangers text-xs uppercase tracking-wider text-white">
-                    Choices
+                    Next Destination(s)
                   </label>
                   <Button variant="cyan-outline" size="sm" onClick={handleAddChoice}>
                     <PlusCircle className="w-3 h-3" />
-                    Add Choice
+                    Add Destination
                   </Button>
                 </div>
 
@@ -566,7 +568,7 @@ export function CreateTab({ questId }) {
 
                   {selectedScene.choices.length === 0 && (
                     <p className="text-sm text-white/50 text-center py-4">
-                      No choices yet. Add choices to create branching paths.
+                      No destinations yet. Add at least one to route the player to the next scene or end the quest.
                     </p>
                   )}
                 </div>
