@@ -157,6 +157,17 @@ const DESCRIPTIONS = {
     'A choice with no destination at all is unplayable.',
   'src/features/quests/__tests__/isQuestPlayable.test.ts::isQuestPlayable > accepts the END sentinel as a routing target without needing a real id':
     'Choices marked __END__ correctly terminate the quest without needing to point at a real scene.',
+  // tests/scouted-waypoints.test.ts
+  'tests/scouted-waypoints.test.ts::Scouted Waypoints — edit flow > PATCHes name + notes and persists across reads':
+    'A player can rename a saved waypoint and update its notes; both fields persist on reload.',
+  'tests/scouted-waypoints.test.ts::Scouted Waypoints — edit flow > PATCHes lat/lng (move-pin flow)':
+    'A player can drag/move a saved waypoint pin and the new coordinates persist.',
+  'tests/scouted-waypoints.test.ts::Scouted Waypoints — edit flow > rejects PATCH from a different user with 404':
+    'Another user cannot edit your saved waypoints — even if they know the id.',
+  'tests/scouted-waypoints.test.ts::Scouted Waypoints — edit flow > rejects an empty name (validation)':
+    'Renaming a saved waypoint to an empty string is rejected with 400.',
+  'tests/scouted-waypoints.test.ts::Scouted Waypoints — edit flow > rejects unauthenticated PATCH with 401':
+    'You must be logged in to edit saved waypoints.',
 };
 
 // Tests collocated with source (apps/api/src/**) are Unit tests — pure

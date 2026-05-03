@@ -220,6 +220,24 @@ class ApiClient {
     });
   }
 
+  async updateScoutedWaypoint(
+    id: string,
+    data: Partial<{
+      name: string;
+      notes: string;
+      lat: number;
+      lng: number;
+      photos: string[];
+      videos: string[];
+      audioRecordings: string[];
+    }>,
+  ) {
+    return this.request<any>(`/users/scouted-waypoints/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
   async deleteScoutedWaypoint(id: string) {
     return this.request<{ success: boolean }>(`/users/scouted-waypoints/${id}`, {
       method: 'DELETE',

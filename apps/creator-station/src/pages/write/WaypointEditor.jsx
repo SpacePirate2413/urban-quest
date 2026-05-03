@@ -9,6 +9,7 @@ import {
     Loader2,
     Locate,
     MapPin,
+    Pencil,
     Plus,
     PlusCircle,
     RefreshCw,
@@ -101,11 +102,18 @@ export function WaypointEditor({ questId }) {
     isLoadingScoutedWaypoints,
     loadScoutedWaypoints,
     deleteScoutedWaypoint,
+    updateScoutedWaypoint,
   } = useWriterStore();
   const quest = quests.find(q => q.id === questId);
   const [selectedWaypointId, setSelectedWaypointId] = useState(null);
   const [showSavedPanel, setShowSavedPanel] = useState(false);
   const [expandedScoutId, setExpandedScoutId] = useState(null);
+  // Inline-edit state for saved waypoints. `editingScoutId` flips a single
+  // expanded card into edit mode; the draft fields hold pending changes
+  // until Save is clicked.
+  const [editingScoutId, setEditingScoutId] = useState(null);
+  const [scoutEditDraft, setScoutEditDraft] = useState({ name: '', notes: '' });
+  const [scoutEditSaving, setScoutEditSaving] = useState(false);
   const mapRef = useRef(null);
 
   // Search bar state.
@@ -431,8 +439,11 @@ export function WaypointEditor({ questId }) {
               <Plus className="w-4 h-4" />
               Add Pin
             </Button>
+            {/* Solid yellow always (not outline) so the button stays
+                readable against the light map background — the panel itself
+                being open/closed is the visual cue for active state. */}
             <Button
-              variant={showSavedPanel ? 'yellow' : 'yellow-outline'}
+              variant="yellow"
               size="sm"
               onClick={() => {
                 setShowSavedPanel(!showSavedPanel);
@@ -539,35 +550,109 @@ export function WaypointEditor({ questId }) {
                       {/* Expanded content */}
                       {isExpanded && (
                         <div className="px-3 pb-3 space-y-3">
-                          {sw.notes && (
-                            <p className="text-xs text-white/70 leading-relaxed bg-input-bg rounded-md p-2">
-                              {sw.notes}
-                            </p>
+                          {editingScoutId === sw.id ? (
+                            /* Inline edit mode — same fields the mobile app
+                               uses, hits the same PATCH endpoint, so the
+                               creator and player see consistent data. */
+                            <>
+                              <Input
+                                label="Name"
+                                value={scoutEditDraft.name}
+                                onChange={(e) =>
+                                  setScoutEditDraft((d) => ({ ...d, name: e.target.value }))
+                                }
+                                placeholder="Location name..."
+                              />
+                              <Textarea
+                                label="Notes"
+                                value={scoutEditDraft.notes}
+                                onChange={(e) =>
+                                  setScoutEditDraft((d) => ({ ...d, notes: e.target.value }))
+                                }
+                                placeholder="Anything worth remembering about this spot..."
+                                rows={3}
+                              />
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="cyan"
+                                  size="sm"
+                                  className="flex-1"
+                                  disabled={scoutEditSaving || !scoutEditDraft.name.trim()}
+                                  onClick={async () => {
+                                    setScoutEditSaving(true);
+                                    try {
+                                      await updateScoutedWaypoint(sw.id, {
+                                        name: scoutEditDraft.name,
+                                        notes: scoutEditDraft.notes,
+                                      });
+                                      setEditingScoutId(null);
+                                    } catch (err) {
+                                      alert(`Save failed: ${err.message}`);
+                                    } finally {
+                                      setScoutEditSaving(false);
+                                    }
+                                  }}
+                                >
+                                  {scoutEditSaving ? 'Saving…' : 'Save Changes'}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setEditingScoutId(null)}
+                                  disabled={scoutEditSaving}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              {sw.notes && (
+                                <p className="text-xs text-white/70 leading-relaxed bg-input-bg rounded-md p-2">
+                                  {sw.notes}
+                                </p>
+                              )}
+
+                              <p className="text-[10px] text-white/40">
+                                Scouted {new Date(sw.createdAt).toLocaleDateString()}
+                              </p>
+
+                              {/* Action buttons */}
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="green"
+                                  size="sm"
+                                  className="flex-1"
+                                  onClick={() => handleAddScoutedToQuest(sw)}
+                                >
+                                  <PlusCircle className="w-3 h-3" />
+                                  Add to Quest
+                                </Button>
+                                <Button
+                                  variant="cyan-outline"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setScoutEditDraft({
+                                      name: sw.name || '',
+                                      notes: sw.notes || '',
+                                    });
+                                    setEditingScoutId(sw.id);
+                                  }}
+                                  title="Edit name and notes"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </Button>
+                                <Button
+                                  variant="danger-outline"
+                                  size="sm"
+                                  onClick={(e) => handleDeleteScouted(sw.id, e)}
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
+                              </div>
+                            </>
                           )}
-
-                          <p className="text-[10px] text-white/40">
-                            Scouted {new Date(sw.createdAt).toLocaleDateString()}
-                          </p>
-
-                          {/* Action buttons */}
-                          <div className="flex gap-2">
-                            <Button
-                              variant="green"
-                              size="sm"
-                              className="flex-1"
-                              onClick={() => handleAddScoutedToQuest(sw)}
-                            >
-                              <PlusCircle className="w-3 h-3" />
-                              Add to Quest
-                            </Button>
-                            <Button
-                              variant="danger-outline"
-                              size="sm"
-                              onClick={(e) => handleDeleteScouted(sw.id, e)}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
-                          </div>
                         </div>
                       )}
                     </Card>

@@ -113,6 +113,37 @@ export async function usersRoutes(app: FastifyInstance) {
     },
   });
 
+  // Edit a scouted waypoint. Players can rename, retitle notes, or move the
+  // pin from either app — the change syncs because both clients hit this
+  // single endpoint and the GET above always returns fresh data.
+  app.patch('/scouted-waypoints/:id', {
+    preHandler: [app.authenticate],
+    handler: async (request, reply) => {
+      const userId = (request.user as { id: string }).id;
+      const { id } = request.params as { id: string };
+      const parsed = scoutedWaypointSchema.partial().safeParse(request.body);
+
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Invalid input', details: parsed.error.errors });
+      }
+
+      const existing = await prisma.scoutedWaypoint.findFirst({ where: { id, userId } });
+      if (!existing) {
+        return reply.status(404).send({ error: 'Waypoint not found' });
+      }
+
+      const { photos, videos, audioRecordings, ...rest } = parsed.data;
+      const data: Record<string, unknown> = { ...rest };
+      // Only stringify media arrays when the caller explicitly sent them so
+      // a partial update (e.g. just `name`) doesn't blow away existing media.
+      if (photos !== undefined) data.photos = JSON.stringify(photos);
+      if (videos !== undefined) data.videos = JSON.stringify(videos);
+      if (audioRecordings !== undefined) data.audioRecordings = JSON.stringify(audioRecordings);
+
+      return prisma.scoutedWaypoint.update({ where: { id }, data });
+    },
+  });
+
   app.delete('/scouted-waypoints/:id', {
     preHandler: [app.authenticate],
     handler: async (request, reply) => {

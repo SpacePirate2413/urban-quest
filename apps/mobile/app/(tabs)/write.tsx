@@ -45,6 +45,85 @@ function WaypointCard({ waypoint, onPress }: { waypoint: ScoutedWaypoint; onPres
 
 type PinCoord = { latitude: number; longitude: number };
 
+// Edit modal for an existing scouted waypoint. Same shape as AddWaypointModal
+// but pre-filled and operates on a specific waypoint id. Supports name + notes
+// edits today; lat/lng moves are deferred until we add a draggable pin UI.
+function EditWaypointModal({ waypoint, onClose, onSave }: {
+  waypoint: ScoutedWaypoint | null;
+  onClose: () => void;
+  onSave: (waypointId: string, name: string, notes: string) => void;
+}) {
+  const [name, setName] = useState('');
+  const [notes, setNotes] = useState('');
+
+  useEffect(() => {
+    if (waypoint) {
+      setName(waypoint.name);
+      setNotes(waypoint.notes ?? '');
+    }
+  }, [waypoint]);
+
+  if (!waypoint) return null;
+
+  const handleSave = () => {
+    if (!name.trim()) {
+      Alert.alert('Error', 'Please enter a name for this waypoint');
+      return;
+    }
+    onSave(waypoint.id, name, notes);
+  };
+
+  return (
+    <View style={styles.modalOverlay}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: Spacing.lg }}>
+        <View style={styles.modalContent}>
+          <Text style={Typography.headerMedium}>Edit Waypoint</Text>
+          <Text style={[Typography.caption, { color: Colors.textSecondary, marginTop: Spacing.xs }]}>
+            Changes sync to the creator station automatically
+          </Text>
+
+          <View style={styles.locationPreview}>
+            <Text style={{ fontSize: 30 }}>📍</Text>
+            <View style={styles.locationInfo}>
+              <Text style={Typography.body}>Pin Location</Text>
+              <Text style={[Typography.caption, { color: Colors.textSecondary }]}>
+                {waypoint.location.latitude.toFixed(4)}°, {waypoint.location.longitude.toFixed(4)}°
+              </Text>
+            </View>
+          </View>
+
+          <TextInput
+            style={styles.input}
+            placeholder="Waypoint name"
+            placeholderTextColor={Colors.textSecondary}
+            value={name}
+            onChangeText={setName}
+          />
+
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            placeholder="Notes (optional)"
+            placeholderTextColor={Colors.textSecondary}
+            multiline
+            numberOfLines={3}
+            value={notes}
+            onChangeText={setNotes}
+          />
+
+          <View style={styles.modalActions}>
+            <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+              <Text style={styles.saveButtonText}>Save Changes</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
 function AddWaypointModal({ visible, onClose, onSave, pinLocation }: {
   visible: boolean;
   onClose: () => void;
@@ -133,7 +212,8 @@ export default function WriteScreen() {
   const [isLoadingWaypoints, setIsLoadingWaypoints] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchBusy, setSearchBusy] = useState(false);
-  const { scoutedWaypoints, addScoutedWaypoint } = useWriteStore();
+  const { scoutedWaypoints, addScoutedWaypoint, updateScoutedWaypoint } = useWriteStore();
+  const [editingWaypoint, setEditingWaypoint] = useState<ScoutedWaypoint | null>(null);
   const { currentLocation } = useLocationStore();
 
   // The map can wander away from the player's current location (search,
@@ -399,7 +479,11 @@ export default function WriteScreen() {
                   // Offer "Show on map" so the user can fly the camera to a
                   // saved pin without scrolling away.
                   Alert.alert(waypoint.name, waypoint.notes || 'No notes', [
-                    { text: 'OK', style: 'default' },
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Edit',
+                      onPress: () => setEditingWaypoint(waypoint),
+                    },
                     {
                       text: 'Show on Map',
                       onPress: () =>
@@ -438,6 +522,23 @@ export default function WriteScreen() {
         onClose={() => setShowAddModal(false)}
         onSave={handleSaveWaypoint}
         pinLocation={pinTarget}
+      />
+
+      {/* Edit modal — pre-filled, PATCHes the saved waypoint and updates the
+          local store. The store row is what the FlatList reads from, so the
+          rename appears immediately without a refetch. */}
+      <EditWaypointModal
+        waypoint={editingWaypoint}
+        onClose={() => setEditingWaypoint(null)}
+        onSave={async (waypointId, name, notes) => {
+          try {
+            await api.updateScoutedWaypoint(waypointId, { name, notes });
+            updateScoutedWaypoint(waypointId, { name, notes });
+            setEditingWaypoint(null);
+          } catch (err: any) {
+            Alert.alert('Save failed', err?.message || 'Could not update waypoint');
+          }
+        }}
       />
     </View>
   );

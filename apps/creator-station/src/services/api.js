@@ -183,6 +183,13 @@ class ApiClient {
     return this.request('/users/scouted-waypoints');
   }
 
+  async updateScoutedWaypoint(id, data) {
+    return this.request(`/users/scouted-waypoints/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
   async deleteScoutedWaypoint(id) {
     return this.request(`/users/scouted-waypoints/${id}`, {
       method: 'DELETE',

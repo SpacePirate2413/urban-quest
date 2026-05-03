@@ -124,6 +124,18 @@ export const useWriterStore = create((set, get) => ({
     }
   },
 
+  // PATCH a scouted waypoint and reflect the change locally. Both apps share
+  // this endpoint, so a rename here will appear in mobile on next refetch.
+  updateScoutedWaypoint: async (waypointId, updates) => {
+    const updated = await api.updateScoutedWaypoint(waypointId, updates);
+    set((state) => ({
+      scoutedWaypoints: state.scoutedWaypoints.map((wp) =>
+        wp.id === waypointId ? { ...wp, ...updated } : wp
+      ),
+    }));
+    return updated;
+  },
+
   // Auth actions
   login: async (email, name) => {
     set({ isLoading: true, error: null });
