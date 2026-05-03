@@ -1,3 +1,4 @@
+import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
 import { Alert } from 'react-native';
 
@@ -90,6 +91,50 @@ export async function pickPhotos(): Promise<PickedAsset[]> {
   });
   if (res.canceled || !res.assets?.length) return [];
   return res.assets.map((a) => normalize(a, 'image/jpeg'));
+}
+
+/**
+ * Audio recording sits behind a tiny stateful wrapper because expo-av's
+ * Recording API is start → stop → getURI rather than a single picker call.
+ * Callers create one with `startRecording()`, then call `stopAndExport()` to
+ * finalize and get back a PickedAsset ready for upload.
+ *
+ * Mime defaults to audio/m4a — expo-av's HIGH_QUALITY preset records m4a on
+ * both iOS and Android, which the server's allowed list covers via
+ * audio/x-m4a / audio/mp4.
+ */
+export async function startRecording(): Promise<Audio.Recording | null> {
+  const perm = await Audio.requestPermissionsAsync();
+  if (!perm.granted) {
+    Alert.alert(
+      'Microphone permission needed',
+      'Enable microphone access in Settings to record audio for your waypoints.',
+    );
+    return null;
+  }
+  await Audio.setAudioModeAsync({
+    allowsRecordingIOS: true,
+    playsInSilentModeIOS: true,
+  });
+  const { recording } = await Audio.Recording.createAsync(
+    Audio.RecordingOptionsPresets.HIGH_QUALITY,
+  );
+  return recording;
+}
+
+export async function stopAndExport(recording: Audio.Recording): Promise<PickedAsset | null> {
+  try {
+    await recording.stopAndUnloadAsync();
+  } catch {
+    // Already stopped — fine.
+  }
+  const uri = recording.getURI();
+  if (!uri) return null;
+  return {
+    uri,
+    mimeType: 'audio/m4a',
+    fileName: `voice-note-${Date.now()}.m4a`,
+  };
 }
 
 /**

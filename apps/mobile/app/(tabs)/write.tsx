@@ -1,4 +1,11 @@
-import { pickPhotos, pickVideos, type PickedAsset } from '@/src/lib/mediaPicker';
+import {
+  pickPhotos,
+  pickVideos,
+  startRecording,
+  stopAndExport,
+  type PickedAsset,
+} from '@/src/lib/mediaPicker';
+import type { Audio } from 'expo-av';
 import { fullMediaUrl } from '@/src/lib/mediaUrl';
 import { api } from '@/src/services/api';
 import { useLocationStore, useWriteStore } from '@/src/store';
@@ -63,9 +70,9 @@ function WaypointCard({ waypoint, onPress }: { waypoint: ScoutedWaypoint; onPres
 /**
  * Horizontal row of media thumbnails with a "+ Add" button. Used by both
  * AddWaypointModal (staged URIs from local picker) and EditWaypointModal
- * (already-uploaded server URLs). For videos we show a placeholder tile with
- * a 🎬 emoji rather than extracting a real frame thumbnail — the latter
- * needs expo-video-thumbnails which adds weight; can revisit if it matters.
+ * (already-uploaded server URLs). Videos and audio show emoji-tile placeholders
+ * — extracting frame thumbnails or rendering an inline waveform isn't worth
+ * the weight for this surface.
  */
 function MediaStrip({
   label,
@@ -75,11 +82,13 @@ function MediaStrip({
   busy,
 }: {
   label: string;
-  kind: 'photo' | 'video';
+  kind: 'photo' | 'video' | 'audio';
   items: string[];
   onAdd: () => void;
   busy?: boolean;
 }) {
+  const placeholderEmoji = kind === 'video' ? '🎬' : kind === 'audio' ? '🎤' : null;
+  const addLabel = kind === 'photo' ? 'Photo' : kind === 'video' ? 'Video' : 'Audio';
   return (
     <View>
       <Text style={[Typography.caption, { color: Colors.textSecondary, marginBottom: Spacing.xs }]}>
@@ -90,8 +99,8 @@ function MediaStrip({
           kind === 'photo' ? (
             <Image key={`${uri}-${i}`} source={{ uri }} style={styles.mediaThumb} />
           ) : (
-            <View key={`${uri}-${i}`} style={[styles.mediaThumb, styles.videoThumb]}>
-              <Text style={{ fontSize: 28 }}>🎬</Text>
+            <View key={`${uri}-${i}`} style={[styles.mediaThumb, styles.placeholderThumb]}>
+              <Text style={{ fontSize: 28 }}>{placeholderEmoji}</Text>
             </View>
           ),
         )}
@@ -105,12 +114,136 @@ function MediaStrip({
           ) : (
             <>
               <Text style={{ fontSize: 22, color: Colors.cyan }}>＋</Text>
-              <Text style={[Typography.caption, { color: Colors.cyan }]}>
-                {kind === 'photo' ? 'Photo' : 'Video'}
-              </Text>
+              <Text style={[Typography.caption, { color: Colors.cyan }]}>{addLabel}</Text>
             </>
           )}
         </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+}
+
+/**
+ * Modal recorder with a single big toggle button + elapsed-time display.
+ * `visible` opens it; `onComplete` fires once the user taps Save (passes the
+ * recorded asset). Cancel discards the in-progress recording. We never let a
+ * stopped recording linger — either it's exported or the temp file is dropped.
+ */
+function AudioRecorderModal({
+  visible,
+  onClose,
+  onComplete,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onComplete: (asset: PickedAsset) => void;
+}) {
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [isStarting, setIsStarting] = useState(false);
+  const [recordedAsset, setRecordedAsset] = useState<PickedAsset | null>(null);
+  const startedAtRef = useRef<number | null>(null);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!visible) {
+      // Reset state when the modal closes (after cancel or save).
+      setRecording(null);
+      setRecordedAsset(null);
+      setElapsedMs(0);
+      startedAtRef.current = null;
+      if (tickRef.current) {
+        clearInterval(tickRef.current);
+        tickRef.current = null;
+      }
+    }
+  }, [visible]);
+
+  if (!visible) return null;
+
+  const isRecording = recording !== null;
+  const hasRecorded = recordedAsset !== null;
+
+  const handleStart = async () => {
+    setIsStarting(true);
+    const rec = await startRecording();
+    setIsStarting(false);
+    if (!rec) return;
+    setRecording(rec);
+    startedAtRef.current = Date.now();
+    tickRef.current = setInterval(() => {
+      setElapsedMs(Date.now() - (startedAtRef.current ?? Date.now()));
+    }, 100);
+  };
+
+  const handleStop = async () => {
+    if (!recording) return;
+    if (tickRef.current) {
+      clearInterval(tickRef.current);
+      tickRef.current = null;
+    }
+    const asset = await stopAndExport(recording);
+    setRecording(null);
+    if (asset) setRecordedAsset(asset);
+  };
+
+  const handleSave = () => {
+    if (recordedAsset) onComplete(recordedAsset);
+  };
+
+  const seconds = Math.floor(elapsedMs / 1000);
+  const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
+  const ss = String(seconds % 60).padStart(2, '0');
+
+  return (
+    <View style={styles.modalOverlay}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: Spacing.lg }}>
+        <View style={styles.modalContent}>
+          <Text style={Typography.headerMedium}>Record Audio Note</Text>
+          <Text style={[Typography.caption, { color: Colors.textSecondary, marginTop: Spacing.xs }]}>
+            {hasRecorded
+              ? 'Tap Save to attach, or Cancel to discard.'
+              : isRecording
+              ? 'Recording… tap the button to stop.'
+              : 'Tap the button to start recording.'}
+          </Text>
+
+          <View style={{ alignItems: 'center', marginVertical: Spacing.lg }}>
+            <Text style={[Typography.headerLarge, { fontVariant: ['tabular-nums'] }]}>
+              {mm}:{ss}
+            </Text>
+            {hasRecorded ? (
+              <View style={[styles.recordButton, styles.recordButtonDone]}>
+                <Text style={{ fontSize: 32 }}>✅</Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[styles.recordButton, isRecording && styles.recordButtonActive]}
+                onPress={isRecording ? handleStop : handleStart}
+                disabled={isStarting}
+              >
+                {isStarting ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={{ fontSize: 36 }}>{isRecording ? '⏹' : '🎤'}</Text>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <View style={styles.modalActions}>
+            <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.saveButton, !hasRecorded && { opacity: 0.4 }]}
+              onPress={handleSave}
+              disabled={!hasRecorded}
+            >
+              <Text style={styles.saveButtonText}>Save</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </ScrollView>
     </View>
   );
@@ -135,6 +268,8 @@ function EditWaypointModal({ waypoint, onClose, onSave, onMediaAdded }: {
   const [notes, setNotes] = useState('');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [uploadingAudio, setUploadingAudio] = useState(false);
+  const [showAudioRecorder, setShowAudioRecorder] = useState(false);
 
   useEffect(() => {
     if (waypoint) {
@@ -147,6 +282,7 @@ function EditWaypointModal({ waypoint, onClose, onSave, onMediaAdded }: {
 
   const photoUris = (waypoint.photos || []).map((p) => fullMediaUrl(p)!).filter(Boolean);
   const videoUris = (waypoint.videos || []).map((v) => fullMediaUrl(v)!).filter(Boolean);
+  const audioUris = (waypoint.audioRecordings || []).map((a) => fullMediaUrl(a)!).filter(Boolean);
 
   // Single upload routine, shared by photo + video buttons. Routes the result
   // back via onMediaAdded using whichever field the server tagged.
@@ -184,6 +320,8 @@ function EditWaypointModal({ waypoint, onClose, onSave, onMediaAdded }: {
     const picks = await pickVideos();
     return uploadPicked(picks, setUploadingVideo, 'videos');
   };
+
+  const handleAddAudio = () => setShowAudioRecorder(true);
 
   const handleSave = () => {
     if (!name.trim()) {
@@ -232,6 +370,7 @@ function EditWaypointModal({ waypoint, onClose, onSave, onMediaAdded }: {
 
           <MediaStrip label="Photos" kind="photo" items={photoUris} onAdd={handleAddPhoto} busy={uploadingPhoto} />
           <MediaStrip label="Videos" kind="video" items={videoUris} onAdd={handleAddVideo} busy={uploadingVideo} />
+          <MediaStrip label="Audio Notes" kind="audio" items={audioUris} onAdd={handleAddAudio} busy={uploadingAudio} />
 
           <View style={styles.modalActions}>
             <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
@@ -243,6 +382,15 @@ function EditWaypointModal({ waypoint, onClose, onSave, onMediaAdded }: {
           </View>
         </View>
       </ScrollView>
+
+      <AudioRecorderModal
+        visible={showAudioRecorder}
+        onClose={() => setShowAudioRecorder(false)}
+        onComplete={async (asset) => {
+          setShowAudioRecorder(false);
+          await uploadPicked([asset], setUploadingAudio, 'audioRecordings');
+        }}
+      />
     </View>
   );
 }
@@ -251,15 +399,21 @@ function AddWaypointModal({ visible, onClose, onSave, pinLocation }: {
   visible: boolean;
   onClose: () => void;
   // Staged media picked before the waypoint exists on the server; the parent
-  // POSTs the waypoint and then uploads each file to the new id. Photos and
-  // videos go in separate arrays so the UI can render distinct strips.
-  onSave: (name: string, notes: string, staged: { photos: PickedAsset[]; videos: PickedAsset[] }) => void;
+  // POSTs the waypoint and then uploads each file to the new id. Photos /
+  // videos / audio go in separate arrays so the UI can render distinct strips.
+  onSave: (
+    name: string,
+    notes: string,
+    staged: { photos: PickedAsset[]; videos: PickedAsset[]; audios: PickedAsset[] },
+  ) => void;
   pinLocation: PinCoord | null;
 }) {
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
   const [stagedPhotos, setStagedPhotos] = useState<PickedAsset[]>([]);
   const [stagedVideos, setStagedVideos] = useState<PickedAsset[]>([]);
+  const [stagedAudios, setStagedAudios] = useState<PickedAsset[]>([]);
+  const [showAudioRecorder, setShowAudioRecorder] = useState(false);
 
   if (!visible) return null;
 
@@ -268,6 +422,7 @@ function AddWaypointModal({ visible, onClose, onSave, pinLocation }: {
     setNotes('');
     setStagedPhotos([]);
     setStagedVideos([]);
+    setStagedAudios([]);
   };
 
   const handleSave = () => {
@@ -275,7 +430,7 @@ function AddWaypointModal({ visible, onClose, onSave, pinLocation }: {
       Alert.alert('Error', 'Please enter a name for this waypoint');
       return;
     }
-    onSave(name, notes, { photos: stagedPhotos, videos: stagedVideos });
+    onSave(name, notes, { photos: stagedPhotos, videos: stagedVideos, audios: stagedAudios });
     reset();
   };
 
@@ -293,6 +448,8 @@ function AddWaypointModal({ visible, onClose, onSave, pinLocation }: {
     const picks = await pickVideos();
     if (picks.length) setStagedVideos((prev) => [...prev, ...picks]);
   };
+
+  const handleAddAudio = () => setShowAudioRecorder(true);
 
   const lat = pinLocation?.latitude ?? 0;
   const lng = pinLocation?.longitude ?? 0;
@@ -338,6 +495,7 @@ function AddWaypointModal({ visible, onClose, onSave, pinLocation }: {
 
           <MediaStrip label="Photos" kind="photo" items={stagedPhotos.map((p) => p.uri)} onAdd={handleAddPhoto} />
           <MediaStrip label="Videos" kind="video" items={stagedVideos.map((v) => v.uri)} onAdd={handleAddVideo} />
+          <MediaStrip label="Audio Notes" kind="audio" items={stagedAudios.map((a) => a.uri)} onAdd={handleAddAudio} />
 
           <View style={styles.modalActions}>
             <TouchableOpacity style={styles.cancelButton} onPress={handleClose}>
@@ -349,6 +507,15 @@ function AddWaypointModal({ visible, onClose, onSave, pinLocation }: {
           </View>
         </View>
       </ScrollView>
+
+      <AudioRecorderModal
+        visible={showAudioRecorder}
+        onClose={() => setShowAudioRecorder(false)}
+        onComplete={(asset) => {
+          setShowAudioRecorder(false);
+          setStagedAudios((prev) => [...prev, asset]);
+        }}
+      />
     </View>
   );
 }
@@ -455,7 +622,7 @@ export default function WriteScreen() {
   const handleSaveWaypoint = async (
     name: string,
     notes: string,
-    staged: { photos: PickedAsset[]; videos: PickedAsset[] },
+    staged: { photos: PickedAsset[]; videos: PickedAsset[]; audios: PickedAsset[] },
   ) => {
     // Pin lands at the map's current center, not GPS. That's how the user
     // scouts a city they're planning a future trip to.
@@ -471,16 +638,21 @@ export default function WriteScreen() {
       // report after the loop with whatever succeeded vs failed.
       const uploadedPhotos: string[] = [];
       const uploadedVideos: string[] = [];
+      const uploadedAudios: string[] = [];
       const failures: string[] = [];
       const allStaged = [
         ...staged.photos.map((p) => ({ asset: p, kind: 'photo' as const })),
         ...staged.videos.map((v) => ({ asset: v, kind: 'video' as const })),
+        ...staged.audios.map((a) => ({ asset: a, kind: 'audio' as const })),
       ];
       for (const { asset, kind } of allStaged) {
         try {
           const r = await api.uploadScoutedMedia(result.id, asset.uri, asset.mimeType, asset.fileName);
           if (r?.mediaUrl) {
-            if (r.field === 'videos' || kind === 'video') uploadedVideos.push(r.mediaUrl);
+            const field = (r.field as 'photos' | 'videos' | 'audioRecordings') ||
+              (kind === 'video' ? 'videos' : kind === 'audio' ? 'audioRecordings' : 'photos');
+            if (field === 'videos') uploadedVideos.push(r.mediaUrl);
+            else if (field === 'audioRecordings') uploadedAudios.push(r.mediaUrl);
             else uploadedPhotos.push(r.mediaUrl);
           }
         } catch (err: any) {
@@ -497,7 +669,7 @@ export default function WriteScreen() {
         location: { latitude: lat, longitude: lng },
         photos: uploadedPhotos,
         videos: uploadedVideos,
-        audioRecordings: [],
+        audioRecordings: uploadedAudios,
         createdAt: new Date(),
       };
       addScoutedWaypoint(newWaypoint);
@@ -522,7 +694,7 @@ export default function WriteScreen() {
         location: { latitude: lat, longitude: lng },
         photos: staged.photos.map((p) => p.uri),
         videos: staged.videos.map((v) => v.uri),
-        audioRecordings: [],
+        audioRecordings: staged.audios.map((a) => a.uri),
         createdAt: new Date(),
       };
       addScoutedWaypoint(newWaypoint);
@@ -856,9 +1028,26 @@ const styles = StyleSheet.create({
     marginRight: Spacing.sm,
     backgroundColor: Colors.inputBg,
   },
-  videoThumb: {
+  placeholderThumb: {
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  recordButton: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: Colors.cyan,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: Spacing.md,
+  },
+  recordButtonActive: {
+    backgroundColor: '#ef4444',
+  },
+  recordButtonDone: {
+    backgroundColor: Colors.surface,
+    borderWidth: 2,
+    borderColor: Colors.cyan,
   },
   addMediaButton: {
     width: 64,
