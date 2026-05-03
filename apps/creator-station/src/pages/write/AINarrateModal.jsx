@@ -235,7 +235,19 @@ export function AINarrateModal({ isOpen, onClose, questId, sceneId, onMediaGener
     // ÷ percent once we have a stable percentage to extrapolate from — that
     // gives a self-correcting "~Ns remaining" display that gets tighter as
     // the run progresses.
+    //
+    // Stale-100% guard: Chatterbox's /progress endpoint can return the
+    // *previous* run's completed state on the very first poll before it has
+    // registered our new request. Without guards, the bar would snap to 100%
+    // and stay there for the entire actual generation. We:
+    //   1. Ignore any percent ≥ 95% during the first 1.5s of elapsed time —
+    //      that's almost certainly the previous run leaking through.
+    //   2. Never display 100% from polling; only the success branch below
+    //      flips the bar to 100 once the blob actually arrives.
+    //   3. Clamp the percent to be monotonically non-decreasing so any later
+    //      stale reads can't jerk the bar backward.
     let cancelled = false;
+    let lastShownPercent = 0;
     (async () => {
       while (!cancelled) {
         const progress = await ttsService.getProgress();
@@ -244,12 +256,21 @@ export function AINarrateModal({ isOpen, onClose, questId, sceneId, onMediaGener
         const elapsedSec = elapsedMs / 1000;
 
         if (progress?.is_processing) {
-          const percent = Math.max(0, Math.min(100, progress.progress_percentage ?? 0));
-          // Trust local timing over Chatterbox's own clock here — its
-          // estimated_completion field varies in shape and isn't available
-          // on every build.
+          let percent = Math.max(0, Math.min(100, progress.progress_percentage ?? 0));
+          if (elapsedMs < 1500 && percent >= 95) {
+            // Likely stale data from the previous run — wait for the next
+            // tick to confirm before showing anything high.
+            percent = lastShownPercent;
+          }
+          // Cap at 95 while polling so the only path to 100 is real completion.
+          percent = Math.min(95, percent);
+          // Monotonically non-decreasing — resist any tick that would scrub
+          // the bar backward.
+          percent = Math.max(lastShownPercent, percent);
+          lastShownPercent = percent;
+
           let remainingSec = null;
-          if (percent >= 5 && percent < 100) {
+          if (percent >= 5 && percent < 95) {
             remainingSec = (elapsedMs / percent) * (100 - percent) / 1000;
           }
           setGenerationProgress({
@@ -280,6 +301,16 @@ export function AINarrateModal({ isOpen, onClose, questId, sceneId, onMediaGener
         selectedVoiceId,
         voiceControls,
       );
+      // Snap the bar to 100% on real completion — the polling loop is
+      // capped at 95 to avoid stale-data false positives, so this is the
+      // only place that ever shows a fully-filled bar.
+      setGenerationProgress((prev) => ({
+        ...(prev || { percent: 100, currentStep: 'Done' }),
+        percent: 100,
+        currentStep: 'Done',
+        elapsedSec: (Date.now() - startedAt) / 1000,
+        remainingSec: 0,
+      }));
       const url = URL.createObjectURL(blob);
       setGeneratedBlob(blob);
       setGeneratedUrl(url);
