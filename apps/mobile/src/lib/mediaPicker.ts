@@ -91,3 +91,36 @@ export async function pickPhotos(): Promise<PickedAsset[]> {
   if (res.canceled || !res.assets?.length) return [];
   return res.assets.map((a) => normalize(a, 'image/jpeg'));
 }
+
+/**
+ * Same flow as pickPhotos but for videos. Camera capture goes into video
+ * recording mode; library picker filters to videos. Server accepts mp4 / mov /
+ * webm — iOS captures land as .mov, Android as .mp4. Library imports could be
+ * any of those. The fallback mime ('video/mp4') only kicks in when the picker
+ * doesn't expose mimeType, which rarely happens on modern SDKs.
+ */
+export async function pickVideos(): Promise<PickedAsset[]> {
+  const source = await showSourceSheet('Add Video');
+  if (!source) return [];
+
+  if (source === 'camera') {
+    if (!(await ensureCameraPermission())) return [];
+    const res = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      videoMaxDuration: 60,
+      quality: 0.8,
+    });
+    if (res.canceled || !res.assets?.length) return [];
+    return [normalize(res.assets[0], 'video/mp4')];
+  }
+
+  if (!(await ensureLibraryPermission())) return [];
+  const res = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+    quality: 0.8,
+    allowsMultipleSelection: true,
+    selectionLimit: 10,
+  });
+  if (res.canceled || !res.assets?.length) return [];
+  return res.assets.map((a) => normalize(a, 'video/mp4'));
+}

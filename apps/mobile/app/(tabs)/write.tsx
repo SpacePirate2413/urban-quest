@@ -1,4 +1,4 @@
-import { pickPhotos, type PickedAsset } from '@/src/lib/mediaPicker';
+import { pickPhotos, pickVideos, type PickedAsset } from '@/src/lib/mediaPicker';
 import { fullMediaUrl } from '@/src/lib/mediaUrl';
 import { api } from '@/src/services/api';
 import { useLocationStore, useWriteStore } from '@/src/store';
@@ -61,20 +61,40 @@ function WaypointCard({ waypoint, onPress }: { waypoint: ScoutedWaypoint; onPres
 }
 
 /**
- * Horizontal row of media thumbnails with a "+ Add Photo" button. Used inside
- * both AddWaypointModal (staged URIs from local picker) and EditWaypointModal
- * (already-uploaded server URLs). Caller passes uris + the add handler.
+ * Horizontal row of media thumbnails with a "+ Add" button. Used by both
+ * AddWaypointModal (staged URIs from local picker) and EditWaypointModal
+ * (already-uploaded server URLs). For videos we show a placeholder tile with
+ * a 🎬 emoji rather than extracting a real frame thumbnail — the latter
+ * needs expo-video-thumbnails which adds weight; can revisit if it matters.
  */
-function PhotoStrip({ uris, onAdd, busy }: { uris: string[]; onAdd: () => void; busy?: boolean }) {
+function MediaStrip({
+  label,
+  kind,
+  items,
+  onAdd,
+  busy,
+}: {
+  label: string;
+  kind: 'photo' | 'video';
+  items: string[];
+  onAdd: () => void;
+  busy?: boolean;
+}) {
   return (
     <View>
       <Text style={[Typography.caption, { color: Colors.textSecondary, marginBottom: Spacing.xs }]}>
-        Photos
+        {label}
       </Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        {uris.map((uri, i) => (
-          <Image key={`${uri}-${i}`} source={{ uri }} style={styles.mediaThumb} />
-        ))}
+        {items.map((uri, i) =>
+          kind === 'photo' ? (
+            <Image key={`${uri}-${i}`} source={{ uri }} style={styles.mediaThumb} />
+          ) : (
+            <View key={`${uri}-${i}`} style={[styles.mediaThumb, styles.videoThumb]}>
+              <Text style={{ fontSize: 28 }}>🎬</Text>
+            </View>
+          ),
+        )}
         <TouchableOpacity
           style={styles.addMediaButton}
           onPress={onAdd}
@@ -85,7 +105,9 @@ function PhotoStrip({ uris, onAdd, busy }: { uris: string[]; onAdd: () => void; 
           ) : (
             <>
               <Text style={{ fontSize: 22, color: Colors.cyan }}>＋</Text>
-              <Text style={[Typography.caption, { color: Colors.cyan }]}>Photo</Text>
+              <Text style={[Typography.caption, { color: Colors.cyan }]}>
+                {kind === 'photo' ? 'Photo' : 'Video'}
+              </Text>
             </>
           )}
         </TouchableOpacity>
@@ -101,15 +123,18 @@ type PinCoord = { latitude: number; longitude: number };
 // edits today; lat/lng moves are deferred until we add a draggable pin UI.
 // Photos can be added directly here (waypoint already exists) — the upload
 // fires immediately and the parent passes the new url back via onPhotoAdded.
-function EditWaypointModal({ waypoint, onClose, onSave, onPhotoAdded }: {
+function EditWaypointModal({ waypoint, onClose, onSave, onMediaAdded }: {
   waypoint: ScoutedWaypoint | null;
   onClose: () => void;
   onSave: (waypointId: string, name: string, notes: string) => void;
-  onPhotoAdded: (waypointId: string, mediaUrl: string) => void;
+  // Server tells us which field the file landed in (photos / videos /
+  // audioRecordings) so we can append to the right local array.
+  onMediaAdded: (waypointId: string, field: 'photos' | 'videos' | 'audioRecordings', mediaUrl: string) => void;
 }) {
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
 
   useEffect(() => {
     if (waypoint) {
@@ -121,25 +146,43 @@ function EditWaypointModal({ waypoint, onClose, onSave, onPhotoAdded }: {
   if (!waypoint) return null;
 
   const photoUris = (waypoint.photos || []).map((p) => fullMediaUrl(p)!).filter(Boolean);
+  const videoUris = (waypoint.videos || []).map((v) => fullMediaUrl(v)!).filter(Boolean);
 
-  const handleAddPhoto = async () => {
-    const picks = await pickPhotos();
+  // Single upload routine, shared by photo + video buttons. Routes the result
+  // back via onMediaAdded using whichever field the server tagged.
+  const uploadPicked = async (
+    picks: PickedAsset[],
+    setBusy: (b: boolean) => void,
+    fallbackField: 'photos' | 'videos' | 'audioRecordings',
+  ) => {
     if (!picks.length) return;
-    setUploadingPhoto(true);
+    setBusy(true);
     try {
       for (const pick of picks) {
         const result = await api.uploadScoutedMedia(
           waypoint.id, pick.uri, pick.mimeType, pick.fileName,
         );
-        // Server returns { mediaUrl, field, waypoint } — use mediaUrl so we
-        // append even if the server's full waypoint payload races other edits.
-        if (result?.mediaUrl) onPhotoAdded(waypoint.id, result.mediaUrl);
+        if (result?.mediaUrl) {
+          const field: 'photos' | 'videos' | 'audioRecordings' =
+            (result.field as any) || fallbackField;
+          onMediaAdded(waypoint.id, field, result.mediaUrl);
+        }
       }
     } catch (err: any) {
-      Alert.alert('Upload failed', err?.message || 'Could not attach photo.');
+      Alert.alert('Upload failed', err?.message || 'Could not attach media.');
     } finally {
-      setUploadingPhoto(false);
+      setBusy(false);
     }
+  };
+
+  const handleAddPhoto = async () => {
+    const picks = await pickPhotos();
+    return uploadPicked(picks, setUploadingPhoto, 'photos');
+  };
+
+  const handleAddVideo = async () => {
+    const picks = await pickVideos();
+    return uploadPicked(picks, setUploadingVideo, 'videos');
   };
 
   const handleSave = () => {
@@ -187,7 +230,8 @@ function EditWaypointModal({ waypoint, onClose, onSave, onPhotoAdded }: {
             onChangeText={setNotes}
           />
 
-          <PhotoStrip uris={photoUris} onAdd={handleAddPhoto} busy={uploadingPhoto} />
+          <MediaStrip label="Photos" kind="photo" items={photoUris} onAdd={handleAddPhoto} busy={uploadingPhoto} />
+          <MediaStrip label="Videos" kind="video" items={videoUris} onAdd={handleAddVideo} busy={uploadingVideo} />
 
           <View style={styles.modalActions}>
             <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
@@ -206,38 +250,48 @@ function EditWaypointModal({ waypoint, onClose, onSave, onPhotoAdded }: {
 function AddWaypointModal({ visible, onClose, onSave, pinLocation }: {
   visible: boolean;
   onClose: () => void;
-  // Staged photos picked before the waypoint exists on the server; the parent
-  // POSTs the waypoint and then uploads each one to the new id.
-  onSave: (name: string, notes: string, stagedPhotos: PickedAsset[]) => void;
+  // Staged media picked before the waypoint exists on the server; the parent
+  // POSTs the waypoint and then uploads each file to the new id. Photos and
+  // videos go in separate arrays so the UI can render distinct strips.
+  onSave: (name: string, notes: string, staged: { photos: PickedAsset[]; videos: PickedAsset[] }) => void;
   pinLocation: PinCoord | null;
 }) {
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
   const [stagedPhotos, setStagedPhotos] = useState<PickedAsset[]>([]);
+  const [stagedVideos, setStagedVideos] = useState<PickedAsset[]>([]);
 
   if (!visible) return null;
+
+  const reset = () => {
+    setName('');
+    setNotes('');
+    setStagedPhotos([]);
+    setStagedVideos([]);
+  };
 
   const handleSave = () => {
     if (!name.trim()) {
       Alert.alert('Error', 'Please enter a name for this waypoint');
       return;
     }
-    onSave(name, notes, stagedPhotos);
-    setName('');
-    setNotes('');
-    setStagedPhotos([]);
+    onSave(name, notes, { photos: stagedPhotos, videos: stagedVideos });
+    reset();
   };
 
   const handleClose = () => {
-    setName('');
-    setNotes('');
-    setStagedPhotos([]);
+    reset();
     onClose();
   };
 
   const handleAddPhoto = async () => {
     const picks = await pickPhotos();
     if (picks.length) setStagedPhotos((prev) => [...prev, ...picks]);
+  };
+
+  const handleAddVideo = async () => {
+    const picks = await pickVideos();
+    if (picks.length) setStagedVideos((prev) => [...prev, ...picks]);
   };
 
   const lat = pinLocation?.latitude ?? 0;
@@ -282,7 +336,8 @@ function AddWaypointModal({ visible, onClose, onSave, pinLocation }: {
             onChangeText={setNotes}
           />
 
-          <PhotoStrip uris={stagedPhotos.map((p) => p.uri)} onAdd={handleAddPhoto} />
+          <MediaStrip label="Photos" kind="photo" items={stagedPhotos.map((p) => p.uri)} onAdd={handleAddPhoto} />
+          <MediaStrip label="Videos" kind="video" items={stagedVideos.map((v) => v.uri)} onAdd={handleAddVideo} />
 
           <View style={styles.modalActions}>
             <TouchableOpacity style={styles.cancelButton} onPress={handleClose}>
@@ -397,7 +452,11 @@ export default function WriteScreen() {
     }
   }, [searchQuery]);
 
-  const handleSaveWaypoint = async (name: string, notes: string, stagedPhotos: PickedAsset[]) => {
+  const handleSaveWaypoint = async (
+    name: string,
+    notes: string,
+    staged: { photos: PickedAsset[]; videos: PickedAsset[] },
+  ) => {
     // Pin lands at the map's current center, not GPS. That's how the user
     // scouts a city they're planning a future trip to.
     const target = mapCenter ?? currentLocation;
@@ -407,18 +466,26 @@ export default function WriteScreen() {
     try {
       const result = await api.addScoutedWaypoint({ name, notes, lat, lng });
 
-      // Now that the waypoint exists server-side, upload each photo the user
-      // staged in the modal. Best-effort per file — one failure shouldn't lose
-      // the others; we report after the loop with whichever succeeded.
+      // Now that the waypoint exists server-side, upload each staged file.
+      // Best-effort per file — one failure shouldn't lose the others; we
+      // report after the loop with whatever succeeded vs failed.
       const uploadedPhotos: string[] = [];
-      const failedPhotos: string[] = [];
-      for (const photo of stagedPhotos) {
+      const uploadedVideos: string[] = [];
+      const failures: string[] = [];
+      const allStaged = [
+        ...staged.photos.map((p) => ({ asset: p, kind: 'photo' as const })),
+        ...staged.videos.map((v) => ({ asset: v, kind: 'video' as const })),
+      ];
+      for (const { asset, kind } of allStaged) {
         try {
-          const r = await api.uploadScoutedMedia(result.id, photo.uri, photo.mimeType, photo.fileName);
-          if (r?.mediaUrl) uploadedPhotos.push(r.mediaUrl);
+          const r = await api.uploadScoutedMedia(result.id, asset.uri, asset.mimeType, asset.fileName);
+          if (r?.mediaUrl) {
+            if (r.field === 'videos' || kind === 'video') uploadedVideos.push(r.mediaUrl);
+            else uploadedPhotos.push(r.mediaUrl);
+          }
         } catch (err: any) {
-          failedPhotos.push(photo.fileName);
-          console.warn('Photo upload failed:', photo.fileName, err?.message);
+          failures.push(asset.fileName);
+          console.warn('Media upload failed:', asset.fileName, err?.message);
         }
       }
 
@@ -429,22 +496,22 @@ export default function WriteScreen() {
         notes,
         location: { latitude: lat, longitude: lng },
         photos: uploadedPhotos,
-        videos: [],
+        videos: uploadedVideos,
         audioRecordings: [],
         createdAt: new Date(),
       };
       addScoutedWaypoint(newWaypoint);
       setShowAddModal(false);
-      if (failedPhotos.length) {
+      if (failures.length) {
         Alert.alert(
           'Saved with errors',
-          `Waypoint saved, but ${failedPhotos.length} photo(s) failed to upload:\n${failedPhotos.join('\n')}`,
+          `Waypoint saved, but ${failures.length} file(s) failed to upload:\n${failures.join('\n')}`,
         );
       } else {
         Alert.alert('Saved!', 'Waypoint saved.');
       }
     } catch {
-      // Local-only fallback when the API is unreachable. Photos can't be
+      // Local-only fallback when the API is unreachable. Files can't be
       // uploaded here, but we keep the picked URIs so the user sees them in
       // the saved-list and we can resync later.
       const newWaypoint: ScoutedWaypoint = {
@@ -453,8 +520,8 @@ export default function WriteScreen() {
         name,
         notes,
         location: { latitude: lat, longitude: lng },
-        photos: stagedPhotos.map((p) => p.uri),
-        videos: [],
+        photos: staged.photos.map((p) => p.uri),
+        videos: staged.videos.map((v) => v.uri),
         audioRecordings: [],
         createdAt: new Date(),
       };
@@ -656,13 +723,15 @@ export default function WriteScreen() {
             Alert.alert('Save failed', err?.message || 'Could not update waypoint');
           }
         }}
-        onPhotoAdded={(waypointId, mediaUrl) => {
-          // Append to local state + bump the editingWaypoint reference so the
-          // PhotoStrip rerenders the new thumbnail without closing the modal.
+        onMediaAdded={(waypointId, field, mediaUrl) => {
+          // Append to the right local array (photos / videos / audioRecordings)
+          // and bump editingWaypoint so the strip rerenders without closing.
           const current = useWriteStore.getState().scoutedWaypoints.find((w) => w.id === waypointId);
-          const nextPhotos = [...(current?.photos || []), mediaUrl];
-          updateScoutedWaypoint(waypointId, { photos: nextPhotos });
-          setEditingWaypoint((wp) => (wp && wp.id === waypointId ? { ...wp, photos: nextPhotos } : wp));
+          const nextList = [...((current?.[field] as string[]) || []), mediaUrl];
+          updateScoutedWaypoint(waypointId, { [field]: nextList } as any);
+          setEditingWaypoint((wp) =>
+            wp && wp.id === waypointId ? ({ ...wp, [field]: nextList } as ScoutedWaypoint) : wp,
+          );
         }}
       />
     </View>
@@ -786,6 +855,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginRight: Spacing.sm,
     backgroundColor: Colors.inputBg,
+  },
+  videoThumb: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   addMediaButton: {
     width: 64,
