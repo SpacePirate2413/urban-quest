@@ -21,6 +21,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import { Badge, Button, Card, Input, Textarea } from '../../components/ui';
 import { api } from '../../services/api';
+import { ScoutMediaGrid } from './ScoutMediaGrid';
 import { useWriterStore } from '../../store/useWriterStore';
 import { SaveButton } from './SaveButton';
 
@@ -611,6 +612,8 @@ export function WaypointEditor({ questId }) {
                                   {sw.notes}
                                 </p>
                               )}
+
+                              <ScoutMediaGrid waypoint={sw} />
 
                               <p className="text-[10px] text-white/40">
                                 Scouted {new Date(sw.createdAt).toLocaleDateString()}
