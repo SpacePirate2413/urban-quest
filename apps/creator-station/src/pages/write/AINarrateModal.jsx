@@ -185,8 +185,29 @@ export function AINarrateModal({ isOpen, onClose, questId, sceneId, onMediaGener
     if (!url) return;
     const audio = new Audio(url);
     audio.onended = () => setPreviewingVoiceId(null);
-    audio.onerror = () => setPreviewingVoiceId(null);
-    audio.play().catch(() => setPreviewingVoiceId(null));
+    audio.onerror = () => {
+      console.error('Preview audio failed for voice:', voiceId, audio.error);
+      setPreviewingVoiceId(null);
+    };
+
+    // Bug fix: previously the first click on a freshly-generated preview
+    // would buffer but never play — the user had to click a second time.
+    // Root cause: calling play() immediately on a `new Audio(blobUrl)` racing
+    // the audio element's own buffering, so the play promise rejected
+    // silently and the catch reset state. We now defer the play call until
+    // the element reports `canplay` (or fire it immediately if the blob is
+    // already buffered, e.g. on a cache hit).
+    const startPlay = () => audio.play().catch((err) => {
+      console.error('Preview play rejected:', voiceId, err);
+      setPreviewingVoiceId(null);
+    });
+    if (audio.readyState >= 3) {
+      startPlay();
+    } else {
+      audio.addEventListener('canplay', startPlay, { once: true });
+      audio.load();
+    }
+
     previewAudioRef.current = audio;
     setPreviewingVoiceId(voiceId);
   };
