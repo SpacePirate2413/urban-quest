@@ -1,3 +1,5 @@
+import { pickPhotos, type PickedAsset } from '@/src/lib/mediaPicker';
+import { fullMediaUrl } from '@/src/lib/mediaUrl';
 import { api } from '@/src/services/api';
 import { useLocationStore, useWriteStore } from '@/src/store';
 import { AppStyles, Colors, Spacing, Typography } from '@/src/theme/theme';
@@ -7,6 +9,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Keyboard,
   ScrollView,
   StyleSheet,
@@ -23,11 +26,24 @@ import MapView, { Marker, Region } from 'react-native-maps';
 // the feature can be re-enabled without a schema migration.
 
 function WaypointCard({ waypoint, onPress }: { waypoint: ScoutedWaypoint; onPress: () => void }) {
+  // Use the first photo as the card thumbnail when present — much more
+  // recognizable than the generic 📍 placeholder when scrolling a long list.
+  const firstPhoto = waypoint.photos?.[0];
+  const thumbUri = fullMediaUrl(firstPhoto);
+  const mediaCount =
+    (waypoint.photos?.length || 0) +
+    (waypoint.videos?.length || 0) +
+    (waypoint.audioRecordings?.length || 0);
+
   return (
     <TouchableOpacity style={styles.waypointCard} onPress={onPress}>
-      <View style={[styles.waypointImage, styles.noImage]}>
-        <Text style={{ fontSize: 24 }}>📍</Text>
-      </View>
+      {thumbUri ? (
+        <Image source={{ uri: thumbUri }} style={styles.waypointImage} />
+      ) : (
+        <View style={[styles.waypointImage, styles.noImage]}>
+          <Text style={{ fontSize: 24 }}>📍</Text>
+        </View>
+      )}
       <View style={styles.waypointInfo}>
         <Text style={Typography.headerMedium}>{waypoint.name}</Text>
         {waypoint.notes && (
@@ -37,9 +53,44 @@ function WaypointCard({ waypoint, onPress }: { waypoint: ScoutedWaypoint; onPres
         )}
         <Text style={[Typography.caption, { color: Colors.textSecondary, marginTop: Spacing.xs }]}>
           {new Date(waypoint.createdAt).toLocaleDateString()}
+          {mediaCount > 0 ? ` · 📎 ${mediaCount}` : ''}
         </Text>
       </View>
     </TouchableOpacity>
+  );
+}
+
+/**
+ * Horizontal row of media thumbnails with a "+ Add Photo" button. Used inside
+ * both AddWaypointModal (staged URIs from local picker) and EditWaypointModal
+ * (already-uploaded server URLs). Caller passes uris + the add handler.
+ */
+function PhotoStrip({ uris, onAdd, busy }: { uris: string[]; onAdd: () => void; busy?: boolean }) {
+  return (
+    <View>
+      <Text style={[Typography.caption, { color: Colors.textSecondary, marginBottom: Spacing.xs }]}>
+        Photos
+      </Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        {uris.map((uri, i) => (
+          <Image key={`${uri}-${i}`} source={{ uri }} style={styles.mediaThumb} />
+        ))}
+        <TouchableOpacity
+          style={styles.addMediaButton}
+          onPress={onAdd}
+          disabled={busy}
+        >
+          {busy ? (
+            <ActivityIndicator color={Colors.cyan} />
+          ) : (
+            <>
+              <Text style={{ fontSize: 22, color: Colors.cyan }}>＋</Text>
+              <Text style={[Typography.caption, { color: Colors.cyan }]}>Photo</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -48,13 +99,17 @@ type PinCoord = { latitude: number; longitude: number };
 // Edit modal for an existing scouted waypoint. Same shape as AddWaypointModal
 // but pre-filled and operates on a specific waypoint id. Supports name + notes
 // edits today; lat/lng moves are deferred until we add a draggable pin UI.
-function EditWaypointModal({ waypoint, onClose, onSave }: {
+// Photos can be added directly here (waypoint already exists) — the upload
+// fires immediately and the parent passes the new url back via onPhotoAdded.
+function EditWaypointModal({ waypoint, onClose, onSave, onPhotoAdded }: {
   waypoint: ScoutedWaypoint | null;
   onClose: () => void;
   onSave: (waypointId: string, name: string, notes: string) => void;
+  onPhotoAdded: (waypointId: string, mediaUrl: string) => void;
 }) {
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   useEffect(() => {
     if (waypoint) {
@@ -64,6 +119,28 @@ function EditWaypointModal({ waypoint, onClose, onSave }: {
   }, [waypoint]);
 
   if (!waypoint) return null;
+
+  const photoUris = (waypoint.photos || []).map((p) => fullMediaUrl(p)!).filter(Boolean);
+
+  const handleAddPhoto = async () => {
+    const picks = await pickPhotos();
+    if (!picks.length) return;
+    setUploadingPhoto(true);
+    try {
+      for (const pick of picks) {
+        const result = await api.uploadScoutedMedia(
+          waypoint.id, pick.uri, pick.mimeType, pick.fileName,
+        );
+        // Server returns { mediaUrl, field, waypoint } — use mediaUrl so we
+        // append even if the server's full waypoint payload races other edits.
+        if (result?.mediaUrl) onPhotoAdded(waypoint.id, result.mediaUrl);
+      }
+    } catch (err: any) {
+      Alert.alert('Upload failed', err?.message || 'Could not attach photo.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   const handleSave = () => {
     if (!name.trim()) {
@@ -110,6 +187,8 @@ function EditWaypointModal({ waypoint, onClose, onSave }: {
             onChangeText={setNotes}
           />
 
+          <PhotoStrip uris={photoUris} onAdd={handleAddPhoto} busy={uploadingPhoto} />
+
           <View style={styles.modalActions}>
             <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
               <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -127,11 +206,14 @@ function EditWaypointModal({ waypoint, onClose, onSave }: {
 function AddWaypointModal({ visible, onClose, onSave, pinLocation }: {
   visible: boolean;
   onClose: () => void;
-  onSave: (name: string, notes: string) => void;
+  // Staged photos picked before the waypoint exists on the server; the parent
+  // POSTs the waypoint and then uploads each one to the new id.
+  onSave: (name: string, notes: string, stagedPhotos: PickedAsset[]) => void;
   pinLocation: PinCoord | null;
 }) {
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
+  const [stagedPhotos, setStagedPhotos] = useState<PickedAsset[]>([]);
 
   if (!visible) return null;
 
@@ -140,15 +222,22 @@ function AddWaypointModal({ visible, onClose, onSave, pinLocation }: {
       Alert.alert('Error', 'Please enter a name for this waypoint');
       return;
     }
-    onSave(name, notes);
+    onSave(name, notes, stagedPhotos);
     setName('');
     setNotes('');
+    setStagedPhotos([]);
   };
 
   const handleClose = () => {
     setName('');
     setNotes('');
+    setStagedPhotos([]);
     onClose();
+  };
+
+  const handleAddPhoto = async () => {
+    const picks = await pickPhotos();
+    if (picks.length) setStagedPhotos((prev) => [...prev, ...picks]);
   };
 
   const lat = pinLocation?.latitude ?? 0;
@@ -192,6 +281,8 @@ function AddWaypointModal({ visible, onClose, onSave, pinLocation }: {
             value={notes}
             onChangeText={setNotes}
           />
+
+          <PhotoStrip uris={stagedPhotos.map((p) => p.uri)} onAdd={handleAddPhoto} />
 
           <View style={styles.modalActions}>
             <TouchableOpacity style={styles.cancelButton} onPress={handleClose}>
@@ -306,7 +397,7 @@ export default function WriteScreen() {
     }
   }, [searchQuery]);
 
-  const handleSaveWaypoint = async (name: string, notes: string) => {
+  const handleSaveWaypoint = async (name: string, notes: string, stagedPhotos: PickedAsset[]) => {
     // Pin lands at the map's current center, not GPS. That's how the user
     // scouts a city they're planning a future trip to.
     const target = mapCenter ?? currentLocation;
@@ -315,28 +406,54 @@ export default function WriteScreen() {
 
     try {
       const result = await api.addScoutedWaypoint({ name, notes, lat, lng });
+
+      // Now that the waypoint exists server-side, upload each photo the user
+      // staged in the modal. Best-effort per file — one failure shouldn't lose
+      // the others; we report after the loop with whichever succeeded.
+      const uploadedPhotos: string[] = [];
+      const failedPhotos: string[] = [];
+      for (const photo of stagedPhotos) {
+        try {
+          const r = await api.uploadScoutedMedia(result.id, photo.uri, photo.mimeType, photo.fileName);
+          if (r?.mediaUrl) uploadedPhotos.push(r.mediaUrl);
+        } catch (err: any) {
+          failedPhotos.push(photo.fileName);
+          console.warn('Photo upload failed:', photo.fileName, err?.message);
+        }
+      }
+
       const newWaypoint: ScoutedWaypoint = {
-        id: result.id || `sw_${Date.now()}`,
+        id: result.id,
         userId: result.userId || '',
         name,
         notes,
         location: { latitude: lat, longitude: lng },
-        photos: [],
+        photos: uploadedPhotos,
         videos: [],
         audioRecordings: [],
         createdAt: new Date(),
       };
       addScoutedWaypoint(newWaypoint);
       setShowAddModal(false);
-      Alert.alert('Saved!', 'Waypoint saved.');
+      if (failedPhotos.length) {
+        Alert.alert(
+          'Saved with errors',
+          `Waypoint saved, but ${failedPhotos.length} photo(s) failed to upload:\n${failedPhotos.join('\n')}`,
+        );
+      } else {
+        Alert.alert('Saved!', 'Waypoint saved.');
+      }
     } catch {
+      // Local-only fallback when the API is unreachable. Photos can't be
+      // uploaded here, but we keep the picked URIs so the user sees them in
+      // the saved-list and we can resync later.
       const newWaypoint: ScoutedWaypoint = {
         id: `sw_${Date.now()}`,
         userId: '',
         name,
         notes,
         location: { latitude: lat, longitude: lng },
-        photos: [],
+        photos: stagedPhotos.map((p) => p.uri),
         videos: [],
         audioRecordings: [],
         createdAt: new Date(),
@@ -539,6 +656,14 @@ export default function WriteScreen() {
             Alert.alert('Save failed', err?.message || 'Could not update waypoint');
           }
         }}
+        onPhotoAdded={(waypointId, mediaUrl) => {
+          // Append to local state + bump the editingWaypoint reference so the
+          // PhotoStrip rerenders the new thumbnail without closing the modal.
+          const current = useWriteStore.getState().scoutedWaypoints.find((w) => w.id === waypointId);
+          const nextPhotos = [...(current?.photos || []), mediaUrl];
+          updateScoutedWaypoint(waypointId, { photos: nextPhotos });
+          setEditingWaypoint((wp) => (wp && wp.id === waypointId ? { ...wp, photos: nextPhotos } : wp));
+        }}
       />
     </View>
   );
@@ -654,6 +779,24 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.inputBg,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  mediaThumb: {
+    width: 64,
+    height: 64,
+    borderRadius: 8,
+    marginRight: Spacing.sm,
+    backgroundColor: Colors.inputBg,
+  },
+  addMediaButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: Colors.cyan,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.inputBg,
   },
   waypointInfo: { flex: 1, padding: Spacing.sm },
   emptyState: { alignItems: 'center', paddingVertical: Spacing.xl },

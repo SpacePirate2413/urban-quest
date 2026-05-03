@@ -1,0 +1,93 @@
+import * as ImagePicker from 'expo-image-picker';
+import { Alert } from 'react-native';
+
+/**
+ * Tiny shared module for the scout-mode media pickers. Wrapping expo-image-picker
+ * here means the modal code stays focused on layout — permission flow, source
+ * choice (camera / library), and result normalization all live here.
+ *
+ * All `pick*` functions return null when the user cancels or denies permission;
+ * callers can early-return without special-casing.
+ */
+
+export interface PickedAsset {
+  uri: string;
+  mimeType: string;
+  fileName: string;
+}
+
+function showSourceSheet(title: string): Promise<'camera' | 'library' | null> {
+  return new Promise((resolve) => {
+    Alert.alert(title, undefined, [
+      { text: 'Take Photo / Video', onPress: () => resolve('camera') },
+      { text: 'Choose from Library', onPress: () => resolve('library') },
+      { text: 'Cancel', style: 'cancel', onPress: () => resolve(null) },
+    ]);
+  });
+}
+
+async function ensureCameraPermission(): Promise<boolean> {
+  const { granted } = await ImagePicker.requestCameraPermissionsAsync();
+  if (!granted) {
+    Alert.alert(
+      'Camera permission needed',
+      'Enable camera access in Settings to capture media for your waypoints.',
+    );
+  }
+  return granted;
+}
+
+async function ensureLibraryPermission(): Promise<boolean> {
+  const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (!granted) {
+    Alert.alert(
+      'Photo library permission needed',
+      'Enable photo library access in Settings to attach existing media.',
+    );
+  }
+  return granted;
+}
+
+function normalize(asset: ImagePicker.ImagePickerAsset, fallbackMime: string): PickedAsset {
+  // expo-image-picker exposes `mimeType` on newer SDK versions; for older
+  // versions / camera captures it may be missing — fall back to the caller's
+  // expected type so the upload still passes server-side mime validation.
+  return {
+    uri: asset.uri,
+    mimeType: asset.mimeType || fallbackMime,
+    fileName:
+      asset.fileName ||
+      asset.uri.split('/').pop() ||
+      `capture-${Date.now()}.${fallbackMime.includes('jpeg') ? 'jpg' : fallbackMime.split('/').pop()}`,
+  };
+}
+
+/**
+ * Prompt the user (Camera vs Library) and return one or more picked photos.
+ * Multiple selection is allowed from the library; camera always returns a
+ * single capture. Returns [] on cancel/denial so callers can `if (!picks.length) return`.
+ */
+export async function pickPhotos(): Promise<PickedAsset[]> {
+  const source = await showSourceSheet('Add Photo');
+  if (!source) return [];
+
+  if (source === 'camera') {
+    if (!(await ensureCameraPermission())) return [];
+    const res = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+    if (res.canceled || !res.assets?.length) return [];
+    return [normalize(res.assets[0], 'image/jpeg')];
+  }
+
+  if (!(await ensureLibraryPermission())) return [];
+  const res = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    quality: 0.8,
+    allowsMultipleSelection: true,
+    selectionLimit: 10,
+  });
+  if (res.canceled || !res.assets?.length) return [];
+  return res.assets.map((a) => normalize(a, 'image/jpeg'));
+}

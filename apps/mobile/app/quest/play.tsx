@@ -256,7 +256,7 @@ function NavigationView({ destination, currentLocation, permissionDenied, onArri
           <Marker
             coordinate={{ latitude: destination.lat, longitude: destination.lng }}
             title={destination.name}
-            description={destination.description}
+            description={destination.notes}
             pinColor={Colors.accentYellow}
           />
         </MapView>
@@ -264,9 +264,9 @@ function NavigationView({ destination, currentLocation, permissionDenied, onArri
 
       <View style={styles.waypointInfo}>
         <Text style={Typography.headerMedium}>{destination.name}</Text>
-        {destination.description ? (
+        {destination.notes ? (
           <Text style={[Typography.body, { color: Colors.textSecondary, marginTop: Spacing.xs }]}>
-            {destination.description}
+            {destination.notes}
           </Text>
         ) : null}
       </View>
