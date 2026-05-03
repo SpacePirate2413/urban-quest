@@ -446,45 +446,30 @@ export const useWriterStore = create((set, get) => ({
     ),
   })),
 
+  // Persist a new scene to the server immediately. We deliberately do NOT fall
+  // back to a local-only `scene-` ID anymore. The old fallback caused a real
+  // bug: scenes added during an API outage got created server-side later
+  // *at upload time*, which assigned orderIndex by upload order rather than
+  // creation order — so scene 1 in the UI could end up as scene 3 in admin.
+  // Throwing here makes the failure visible at the point of action so the
+  // caller can show an error instead of producing silently-misordered data.
   addScene: async (questId, scene) => {
     const state = get();
     const quest = state.quests.find(q => q.id === questId);
-    try {
-      const newScene = await api.addScene(questId, {
-        script: scene?.script || '',
-        question: scene?.question || '',
-        choices: scene?.choices ? JSON.stringify(scene.choices) : null,
-        waypointId: scene?.waypointId || quest?.waypoints[0]?.id || null,
-      });
-      set((state) => ({
-        quests: state.quests.map((q) =>
-          q.id === questId
-            ? { ...q, scenes: [...q.scenes, { ...newScene, choices: scene?.choices || [] }] }
-            : q
-        ),
-      }));
-      return newScene;
-    } catch (err) {
-      // Fallback to local
-      const localScene = {
-        id: `scene-${Date.now()}`,
-        waypointId: quest?.waypoints[0]?.id || null,
-        script: '',
-        question: '',
-        choices: [],
-        audioTracks: [],
-        ...scene,
-      };
-      set((state) => ({
-        quests: state.quests.map((q) =>
-          q.id === questId
-            ? { ...q, scenes: [...q.scenes, localScene] }
-            : q
-        ),
-        error: err.message,
-      }));
-      return localScene;
-    }
+    const newScene = await api.addScene(questId, {
+      script: scene?.script || '',
+      question: scene?.question || '',
+      choices: scene?.choices ? JSON.stringify(scene.choices) : null,
+      waypointId: scene?.waypointId || quest?.waypoints[0]?.id || null,
+    });
+    set((state) => ({
+      quests: state.quests.map((q) =>
+        q.id === questId
+          ? { ...q, scenes: [...q.scenes, { ...newScene, choices: scene?.choices || [] }] }
+          : q
+      ),
+    }));
+    return newScene;
   },
 
   // Scene save state, keyed by sceneId. UI reads `useWriterStore(s => s.sceneSaveState[id])`

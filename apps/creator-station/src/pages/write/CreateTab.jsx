@@ -96,10 +96,19 @@ export function CreateTab({ questId }) {
 
   // ── Handlers ──────────────────────────────────────────────────────────
 
-  const handleAddScene = () => {
-    const newSceneId = `scene-${Date.now()}`;
-    addScene(questId, { id: newSceneId });
-    setSelectedSceneId(newSceneId);
+  // Await the server response so we can select the real DB-assigned scene id.
+  // Selecting a synthetic local id used to leave the UI pointing at a phantom
+  // scene; it also caused the upload-time fallback to (re)create the scene
+  // server-side at the wrong moment, which is what produced the "scenes
+  // reversed in admin" bug.
+  const handleAddScene = async () => {
+    try {
+      const created = await addScene(questId, {});
+      if (created?.id) setSelectedSceneId(created.id);
+    } catch (err) {
+      console.error('Add scene failed:', err);
+      alert(`Couldn't add scene: ${err.message}. Make sure the API is running.`);
+    }
   };
 
   const handleDeleteScene = () => {
@@ -172,8 +181,15 @@ export function CreateTab({ questId }) {
     try {
       let dbSceneId = sceneId;
 
-      // Sync local-only scene to DB first
+      // Migration safety net: brand-new scenes are persisted server-side at
+      // creation time (handleAddScene awaits store.addScene), so they get a
+      // real DB id immediately. Anything still carrying a `scene-` prefix is
+      // a leftover from the old offline-only path — most likely seeded into
+      // localStorage during a prior outage. We promote it to the server here
+      // (with a warning) so the upload can proceed; this path should not be
+      // hit for any scene created with the post-fix flow.
       if (sceneId.startsWith('scene-')) {
+        console.warn('Upgrading local-only scene to server scene at upload time:', sceneId);
         const scene = quest.scenes.find(s => s.id === sceneId);
         const created = await api.addScene(questId, {
           script: scene?.script || '(no script)',
