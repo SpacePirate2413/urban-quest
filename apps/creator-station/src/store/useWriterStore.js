@@ -340,7 +340,6 @@ export const useWriterStore = create((set, get) => ({
     try {
       const newWaypoint = await api.addWaypoint(questId, {
         name: waypoint?.name || 'New Waypoint',
-        description: waypoint?.description || '',
         notes: waypoint?.notes || '',
         lat: waypoint?.lat || 40.7128 + (Math.random() - 0.5) * 0.1,
         lng: waypoint?.lng || -74.0060 + (Math.random() - 0.5) * 0.1,
@@ -359,7 +358,6 @@ export const useWriterStore = create((set, get) => ({
       const localWaypoint = {
         id: `wp-${Date.now()}`,
         name: 'New Waypoint',
-        description: '',
         notes: '',
         photo: null,
         lat: 40.7128 + (Math.random() - 0.5) * 0.1,
@@ -399,7 +397,7 @@ export const useWriterStore = create((set, get) => ({
 
     // 2. Filter to fields the server's waypointSchema accepts. Anything
     // outside this set (e.g. UI-only flags) stays local-only.
-    const SERVER_FIELDS = ['name', 'description', 'notes', 'photoUrl', 'lat', 'lng'];
+    const SERVER_FIELDS = ['name', 'notes', 'photoUrl', 'lat', 'lng'];
     const serverUpdates = {};
     for (const k of SERVER_FIELDS) {
       if (k in updates) serverUpdates[k] = updates[k];

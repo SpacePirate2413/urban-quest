@@ -297,7 +297,6 @@ export function WaypointEditor({ questId }) {
   const handleAddScoutedToQuest = (scouted) => {
     addWaypoint(questId, {
       name: scouted.name,
-      description: scouted.notes || '',
       notes: scouted.notes || '',
       lat: scouted.lat,
       lng: scouted.lng,
@@ -676,7 +675,6 @@ export function WaypointEditor({ questId }) {
                   onSave={async () => {
                     await api.updateWaypoint(selectedWaypoint.id, {
                       name: selectedWaypoint.name,
-                      description: selectedWaypoint.description,
                       notes: selectedWaypoint.notes,
                       lat: selectedWaypoint.lat,
                       lng: selectedWaypoint.lng,
@@ -690,14 +688,6 @@ export function WaypointEditor({ questId }) {
                 value={selectedWaypoint.name}
                 onChange={(e) => handleUpdateWaypoint('name', e.target.value)}
                 placeholder="Location name..."
-              />
-
-              <Textarea
-                label="Description"
-                value={selectedWaypoint.description}
-                onChange={(e) => handleUpdateWaypoint('description', e.target.value)}
-                placeholder="Describe this location..."
-                rows={3}
               />
 
               <Textarea

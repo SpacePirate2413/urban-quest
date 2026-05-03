@@ -312,7 +312,7 @@ export const useQuestStore = create<QuestState>((set) => ({
           id: wp.id,
           questId: q.id,
           title: wp.name || `Waypoint ${i + 1}`,
-          description: wp.description || '',
+          notes: wp.notes ?? undefined,
           order: i + 1,
           location: { latitude: wp.lat || 0, longitude: wp.lng || 0 },
           radius: 15,

@@ -41,7 +41,7 @@ type Coord = { latitude: number; longitude: number };
 // when two scenes share a physical waypoint. Legacy data uses `waypointId`;
 // parsePlayableQuest migrates that on read.
 type Choice = { text: string; sceneId: string };
-type Waypoint = { id: string; name: string; description?: string; lat: number; lng: number; orderIndex: number };
+type Waypoint = { id: string; name: string; notes?: string; lat: number; lng: number; orderIndex: number };
 type Scene = {
   id: string;
   waypointId: string;
@@ -99,7 +99,7 @@ function parsePlayableQuest(data: any): PlayableQuest | string {
     .map((wp: any, i: number) => ({
       id: wp.id,
       name: wp.name || `Waypoint ${i + 1}`,
-      description: wp.description ?? undefined,
+      notes: wp.notes ?? undefined,
       lat: Number(wp.lat),
       lng: Number(wp.lng),
       orderIndex: typeof wp.orderIndex === 'number' ? wp.orderIndex : i,

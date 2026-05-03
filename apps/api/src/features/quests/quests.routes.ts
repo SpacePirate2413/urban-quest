@@ -51,7 +51,6 @@ const updateQuestSchema = createQuestSchema.partial().extend({
 
 const waypointSchema = z.object({
   name: z.string().min(1).max(100),
-  description: z.string().optional(),
   notes: z.string().optional(),
   photoUrl: z.string().url().optional(),
   lat: z.number(),

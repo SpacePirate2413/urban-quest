@@ -65,11 +65,12 @@ export interface Waypoint {
   id: string;
   questId: string;
   title: string;
-  description: string;
+  // Single notes field — `description` was removed; any text that lived there
+  // was migrated into notes via apps/api/scripts/migrate-waypoint-description-to-notes.mjs.
+  notes?: string;
   order: number;
   location: LocationCoords;
   radius: number;
-  note?: string;
   photoUrl?: string;
   scenes: Scene[];
 }

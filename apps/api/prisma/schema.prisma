@@ -91,7 +91,6 @@ model Quest {
 model Waypoint {
   id          String  @id @default(cuid())
   name        String
-  description String?
   notes       String?
   photoUrl    String?
   lat         Float

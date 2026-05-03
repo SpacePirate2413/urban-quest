@@ -262,7 +262,6 @@ export async function deleteQuest(id: string, authorId: string) {
 // Waypoint operations
 export async function addWaypoint(questId: string, authorId: string, data: {
   name: string;
-  description?: string;
   notes?: string;
   photoUrl?: string;
   lat: number;
@@ -287,7 +286,6 @@ export async function addWaypoint(questId: string, authorId: string, data: {
 
 export async function updateWaypoint(waypointId: string, authorId: string, data: Partial<{
   name: string;
-  description: string;
   notes: string;
   photoUrl: string;
   lat: number;

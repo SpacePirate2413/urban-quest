@@ -98,7 +98,7 @@ export default function QuestDetailScreen() {
               id: wp.id,
               questId: data.id,
               title: wp.name || `Waypoint ${i + 1}`,
-              description: wp.description || '',
+              notes: wp.notes ?? undefined,
               order: i + 1,
               location: { latitude: wp.lat || 0, longitude: wp.lng || 0 },
               radius: 15,
